@@ -41,6 +41,16 @@ impl Display for Literal {
         }
     }
 }
+impl Literal {
+    pub fn is_truthly(&self)->bool{
+        match self {
+            Literal::Nil=> false,
+            Literal::True => true,
+            Literal::False => false,
+            _=> true,
+        } 
+    }
+}
 impl PartialEq for Literal {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {

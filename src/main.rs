@@ -26,7 +26,6 @@ fn main() {
 pub fn run_file(source: &String) {
     let source = std::fs::read_to_string(source).unwrap();
     let mut interpreter = Interpreter::new();
-
     run(source, &mut interpreter);
     if *ERROR.lock().unwrap() {
         exit(64);

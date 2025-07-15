@@ -61,11 +61,33 @@ impl Parser {
     pub fn statements(&mut self) -> Result<Stmt, String> {
         if self.match_(&[TokenType::Print]) {
             self.print_statement()
+        } else if self.match_(&[TokenType::If]) {
+            self.if_statement()
         } else if self.match_(&[TokenType::LeftBrace]) {
             self.block()
         } else {
             self.expression_statement()
         }
+    }
+    pub fn if_statement(&mut self)-> Result<Stmt,String>{
+        self.consume(TokenType::LeftParen, "Expected ( after if statement")?;
+        let conditions = self.expression()?;
+        self.consume(TokenType::RightParen, "Expected ) after statement")?;
+        // if block
+        self.consume(TokenType::LeftBrace, "Expected { before start of the if block")?;
+        let then_block = self.statements()?; 
+        self.consume(TokenType::RightBrace, "Expected } at end of block")?; 
+        let mut else_block = None;
+        if self.match_(&[TokenType::Else]){        
+        self.consume(TokenType::LeftBrace, "Expected { before start of the if block")?;
+        else_block = Some(Box::new(self.statements()?));
+        self.consume(TokenType::RightBrace, "Expected } at end of block")?;
+        }
+        Ok(Stmt::If{
+            condition:conditions,
+            then_branch: Box::new(then_block),
+            else_branch: else_block
+        })
     }
 
     pub fn block(&mut self) -> Result<Stmt, String> {
@@ -84,10 +106,13 @@ impl Parser {
         self.consume(TokenType::Semicolon, "expected ; after end of statement")?;
         Ok(Stmt::Print { expr: expression })
     }
+
     pub fn expression_statement(&mut self) -> Result<Stmt, String> {
-        Ok(Stmt::Expr {
+        let rtes = Ok(Stmt::Expr {
             expr: self.expression()?,
-        })
+        });
+        self.consume(TokenType::Semicolon, "Expected ; afer statement")?;
+        rtes
     }
 
     pub fn expression(&mut self) -> Result<Expr, String> {
@@ -98,7 +123,6 @@ impl Parser {
         let expr = self.equality()?;
         if self.match_(&[TokenType::Equal]) {
             let value = self.assignment()?;
-            self.consume(TokenType::Semicolon, "Expected ; afer statement")?;
             if let Expr::Variable { ref token } = expr {
                 Ok(Expr::Assign {
                     token: token.clone(),

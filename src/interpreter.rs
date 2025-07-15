@@ -40,6 +40,15 @@ impl Interpreter {
 
     pub fn execute(&mut self, stmt: Stmt) -> Result<(), String> {
         match stmt {
+            Stmt::If { condition, then_branch, else_branch }=>{
+                let condition = self.eval(condition)?;
+                if condition.is_truthly(){
+                    self.execute(*then_branch)?;
+                }else if else_branch.is_some(){
+                    self.execute(*else_branch.unwrap())?;
+                }
+                Ok(())
+            },
             Stmt::Block { stmts } => self.execute_block(stmts),
             Stmt::Variable { op, expr } => {
                 if let Some(a) = expr {
