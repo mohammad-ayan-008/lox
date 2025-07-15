@@ -8,13 +8,13 @@ use crate::{
 };
 
 pub struct Interpreter {
-    environemt: Environment,
+    environemt: Rc<RefCell<Environment>>,
 }
 
 impl Interpreter {
     pub fn new() -> Self {
         Interpreter {
-            environemt: Environment::new(),
+            environemt: Rc::new(RefCell::new(Environment::new())),
         }
     }
 
@@ -25,12 +25,15 @@ impl Interpreter {
         Ok(())
     }
     pub fn execute_block(&mut self, stmt: Vec<Stmt>) -> Result<(), String> {
-        let mut env = Environment::new();
-        env.enclosing = Some(Rc::new(RefCell::new(self.environemt.clone())));
+        
+
+       
+        let mut env = Rc::new(RefCell::new (Environment::new()));
+        env.as_ref().borrow_mut().enclosing = Some(self.environemt.clone());
 
         let previous = self.environemt.clone();
-
         self.environemt = env;
+        
         for i in stmt {
             self.execute(i)?;
         }
@@ -40,6 +43,12 @@ impl Interpreter {
 
     pub fn execute(&mut self, stmt: Stmt) -> Result<(), String> {
         match stmt {
+            Stmt::While { condition, stmts }=>{
+                while self.eval(condition.clone())?.is_truthly(){
+                    self.execute(*stmts.clone())?;
+                }
+                Ok(())
+            },
             Stmt::If { condition, then_branch, else_branch }=>{
                 let condition = self.eval(condition)?;
                 if condition.is_truthly(){
@@ -53,10 +62,10 @@ impl Interpreter {
             Stmt::Variable { op, expr } => {
                 if let Some(a) = expr {
                     let eval = self.eval(a)?;
-                    self.environemt.define(op.lexeme.unwrap(), eval)
+                    self.environemt.as_ref().borrow_mut().define(op.lexeme.unwrap(), eval)
                 } else {
                     let val = Literal::Nil;
-                    self.environemt.define(op.lexeme.unwrap(), val);
+                    self.environemt.as_ref().borrow_mut().define(op.lexeme.unwrap(), val);
                 }
                 Ok(())
             }
@@ -73,19 +82,30 @@ impl Interpreter {
     }
     pub fn eval(&mut self, expr: Expr) -> Result<Literal, String> {
         match expr {
+            Expr::Logical { left, op, right }=>{
+                let left = self.eval(*left)?;
+                if op.token_type == TokenType::Or{
+                    if left.is_truthly(){
+                        return Ok(left);
+                    }
+                }else if !left.is_truthly(){
+                         return Ok(left);
+                }
+                Ok(self.eval(*right)?)
+            },
             Expr::Assign { token, value } => {
                 let expr = self.eval(*value)?;
-                self.environemt.assign(&token.lexeme.unwrap(), &expr)?;
+                self.environemt.as_ref().borrow_mut().assign(&token.lexeme.unwrap(), &expr)?;
                 Ok(expr)
             }
-            Expr::Variable { token } => self.environemt.get(token.lexeme.unwrap()),
+            Expr::Variable { token } => self.environemt.as_ref().borrow_mut().get(token.lexeme.unwrap()),
             Expr::Literal { value } => Ok(value.clone()),
             Expr::Group { value } => Ok(self.eval(*value)?),
             Expr::Unary { op, expr } => {
                 let token_type = op.token_type;
                 let expr = self.eval(*expr);
                 match (token_type, expr) {
-                    (TokenType::Bang, any) => Ok(!any?),
+                    (TokenType::Bang, Ok(any)) => Ok(Literal::from(!any.is_truthly())),
                     (TokenType::Minus, Ok(Literal::Number(a))) => Ok(Literal::Number(-a)),
                     _ => Err("not implemented for this type".to_string()),
                 }

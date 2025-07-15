@@ -60,41 +60,17 @@ impl PartialEq for Literal {
             (Literal::String(a), Literal::String(b)) => {
                 a.borrow().to_string() == b.borrow().to_string()
             }
-            (Literal::False, any) => {
-                if let Literal::False = any {
-                    true
-                } else {
-                    false
-                }
-            }
-            (Literal::True, any) => {
-                if let Literal::True = any {
-                    true
-                } else {
-                    false
-                }
-            }
-            (Literal::Number(_), any) => {
-                if let Literal::Number(_) = any {
-                    true
-                } else {
-                    false
-                }
-            }
-            (Literal::String(_), any) => {
-                if let Literal::String(_) = any {
-                    true
-                } else {
-                    false
-                }
-            }
+            (Literal::False, any) => matches!(any,Literal::False),  
+            (Literal::True, any) => matches!(any,Literal::True),
+            (Literal::Number(_), any) => matches!(any,Literal::Number(_)),
+            (Literal::String(_), any) => matches!(any,Literal::String(_)),
         }
     }
 }
 
 impl From<bool> for Literal {
     fn from(value: bool) -> Self {
-        if value == true {
+        if value{
             Literal::True
         } else {
             Literal::False
@@ -102,32 +78,8 @@ impl From<bool> for Literal {
     }
 }
 
-impl Not for Literal {
-    type Output = Self;
-    fn not(self) -> Self::Output {
-        match self {
-            Literal::True => Literal::False,
-            Literal::False => Literal::True,
-            Literal::Number(a) => {
-                if (a == 0.0) {
-                    Literal::False
-                } else {
-                    Literal::True
-                }
-            }
-            Literal::String(a) => {
-                if a.borrow().is_empty() {
-                    Literal::False
-                } else {
-                    Literal::True
-                }
-            }
-            Literal::Nil => Literal::False,
-        }
-    }
-}
 
-#[derive(Debug)]
+#[derive(Debug,Clone)]
 pub enum Expr {
     Literal {
         value: Literal,
@@ -146,6 +98,11 @@ pub enum Expr {
     },
     Variable {
         token: Token,
+    },
+    Logical{
+        left: Box<Expr>,
+        op: Token,
+        right: Box<Expr>,
     },
     Assign {
         token: Token,
