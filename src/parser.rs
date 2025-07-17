@@ -1,7 +1,9 @@
 use std::{borrow::Borrow, cell::RefCell, io::stdin, rc::Rc};
 
 use crate::{
-    expr::{Expr, Literal}, stmt::Stmt, Tokentype::{Token, TokenType}
+    Tokentype::{Token, TokenType},
+    expr::{Expr, Literal},
+    stmt::Stmt,
 };
 
 /*
@@ -21,12 +23,16 @@ primary        → NUMBER | STRING | "true" | "false" | "nil"
 pub struct Parser {
     tokens: Vec<Token>,
     current: usize,
+    loop_depth: usize,
 }
 impl Parser {
     pub fn new(tokens: Vec<Token>) -> Self {
-        Self { tokens, current: 0 }
+        Self {
+            tokens,
+            current: 0,
+            loop_depth: 0,
+        }
     }
-
 
     pub fn parse_stmt(&mut self) -> Result<Vec<Stmt>, String> {
         let mut stmts = vec![];
@@ -35,7 +41,6 @@ impl Parser {
         }
         Ok(stmts)
     }
-
 
     pub fn declaration(&mut self) -> Result<Stmt, String> {
         if self.match_(&[TokenType::Var]) {
@@ -65,81 +70,117 @@ impl Parser {
             self.for_statement()
         } else if self.match_(&[TokenType::If]) {
             self.if_statement()
-        }else if self.match_(&[TokenType::While]) {
+        } else if self.match_(&[TokenType::While]) {
             self.while_statement()
-        }else if self.match_(&[TokenType::LeftBrace]) {
+        } else if self.match_(&[TokenType::LeftBrace]) {
             self.block()
+        } else if self.match_(&[TokenType::Break]) {
+            if self.loop_depth == 0 {
+                return Err(format!(
+                    "Syntax error at line {}: 'break' used outside of loop",
+                    self.previous().line
+                ));
+            }
+            Ok(Stmt::Break)
+        } else if self.match_(&[TokenType::Continue]) {
+            if self.loop_depth == 0 {
+                return Err(format!(
+                    "Syntax error at line {}: 'continue' used outside of loop",
+                    self.previous().line
+                ));
+            }
+            Ok(Stmt::Continue)
         } else {
             self.expression_statement()
         }
     }
 
-    pub fn for_statement(&mut self)->Result<Stmt,String>{
+    pub fn for_statement(&mut self) -> Result<Stmt, String> {
         self.consume(TokenType::LeftParen, "Expected ( after for")?;
         let mut init = None;
-        if self.match_(&[TokenType::Semicolon]){
+        if self.match_(&[TokenType::Semicolon]) {
             init = None;
-        }else if self.match_(&[TokenType::Var]) {
+        } else if self.match_(&[TokenType::Var]) {
             init = Some(self.variable()?);
-        }else {
-            init = Some(self.expression_statement()?); 
+        } else {
+            init = Some(self.expression_statement()?);
         }
         let mut condition = None;
-        if !self.check(TokenType::Semicolon){
+        if !self.check(TokenType::Semicolon) {
             condition = Some(self.expression()?);
         }
         self.consume(TokenType::Semicolon, "Expected ; after loop condition ")?;
         let mut expr = None;
-        if !self.check(TokenType::RightParen){
+        if !self.check(TokenType::RightParen) {
             expr = Some(self.expression()?);
         }
         self.consume(TokenType::RightParen, "Expected ) after for clause")?;
+        self.loop_depth += 1;
         let mut body = self.statements()?;
-        if !matches!(body.clone(),Stmt::Block { stmts }){
+        self.loop_depth -= 1;
+        if !matches!(body.clone(), Stmt::Block { stmts }) {
             return Err("Expected a block".to_owned());
         }
-        if expr.is_some(){
-            body =  Stmt::Block { stmts: vec![body,Stmt::Expr { expr: expr.unwrap() }] }
+        if expr.is_some() {
+            body = Stmt::Block {
+                stmts: vec![
+                    body,
+                    Stmt::Expr {
+                        expr: expr.unwrap(),
+                    },
+                ],
+            }
         }
-        if condition.is_none(){
-            condition = Some(Expr::Literal { value: Literal::True })
+        if condition.is_none() {
+            condition = Some(Expr::Literal {
+                value: Literal::True,
+            })
         }
-        body = Stmt::While { condition: condition.unwrap(), stmts: Box::new(body) };
-        if init.is_some(){
-            body =Stmt::Block { stmts: vec![init.unwrap(),body] } 
+        body = Stmt::While {
+            condition: condition.unwrap(),
+            stmts: Box::new(body),
+        };
+
+        if init.is_some() {
+            body = Stmt::Block {
+                stmts: vec![init.unwrap(), body],
+            }
         }
         Ok(body)
     }
-    pub fn while_statement(&mut self)->Result<Stmt,String>{
+    pub fn while_statement(&mut self) -> Result<Stmt, String> {
         self.consume(TokenType::LeftParen, "Expected (  after while ")?;
         let expr = self.expression()?;
         self.consume(TokenType::RightParen, "Expected ) after condition")?;
-        let  statements = self.statements()?;
-        if !matches!(statements.clone(), Stmt::Block { stmts }){
-            Err(format!("Expected a block found {:?}",statements))
-        }else{
-        Ok(Stmt::While { condition: expr, stmts: Box::new(statements) })
+        self.loop_depth += 1;
+        let statements = self.statements()?;
+        self.loop_depth -= 1;
+        if !matches!(statements.clone(), Stmt::Block { stmts }) {
+            Err(format!("Expected a block found {:?}", statements))
+        } else {
+            Ok(Stmt::While {
+                condition: expr,
+                stmts: Box::new(statements),
+            })
         }
     }
 
-    pub fn if_statement(&mut self)-> Result<Stmt,String>{
+    pub fn if_statement(&mut self) -> Result<Stmt, String> {
         self.consume(TokenType::LeftParen, "Expected ( after if statement")?;
         let conditions = self.expression()?;
         self.consume(TokenType::RightParen, "Expected ) after statement")?;
         // if block
 
-        let then_block = self.statements()?; 
+        let then_block = self.statements()?;
         //else block
         let mut else_block = None;
-        if self.match_(&[TokenType::Else]){        
-
-        else_block = Some(Box::new(self.statements()?));
-
+        if self.match_(&[TokenType::Else]) {
+            else_block = Some(Box::new(self.statements()?));
         }
-        Ok(Stmt::If{
-            condition:conditions,
+        Ok(Stmt::If {
+            condition: conditions,
             then_branch: Box::new(then_block),
-            else_branch: else_block
+            else_branch: else_block,
         })
     }
 
@@ -189,24 +230,32 @@ impl Parser {
         }
     }
 
-    pub fn or(&mut self)-> Result<Expr,String>{
+    pub fn or(&mut self) -> Result<Expr, String> {
         let mut expr = self.and()?;
-        while self.match_(&[TokenType::Or]){
+        while self.match_(&[TokenType::Or]) {
             let token = self.previous().clone();
             let right = self.and()?;
-            expr = Expr::Logical { left: Box::new(expr), op: token, right:Box::new(right) };
+            expr = Expr::Logical {
+                left: Box::new(expr),
+                op: token,
+                right: Box::new(right),
+            };
         }
         Ok(expr)
     }
 
-    pub fn and(&mut self)-> Result<Expr,String>{
+    pub fn and(&mut self) -> Result<Expr, String> {
         let mut expr = self.equality()?;
         while self.match_(&[TokenType::And]) {
             let token = self.previous().clone();
             let right = self.equality()?;
-            expr = Expr::Logical { left: Box::new(expr), op: token, right:Box::new(right) };
-         }
- 
+            expr = Expr::Logical {
+                left: Box::new(expr),
+                op: token,
+                right: Box::new(right),
+            };
+        }
+
         Ok(expr)
     }
     pub fn equality(&mut self) -> Result<Expr, String> {
@@ -318,7 +367,7 @@ impl Parser {
         }
     }
 
-    pub fn previous(&mut self) -> &Token{
+    pub fn previous(&mut self) -> &Token {
         &self.tokens[self.current - 1]
     }
 

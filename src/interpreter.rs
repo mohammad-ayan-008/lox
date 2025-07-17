@@ -1,4 +1,4 @@
-use std::{cell::RefCell, env::set_var, rc::Rc};
+use std::{cell::RefCell, rc::Rc};
 
 use crate::{
     Tokentype::TokenType,
@@ -11,6 +11,12 @@ pub struct Interpreter {
     environemt: Rc<RefCell<Environment>>,
 }
 
+pub enum Error {
+    Break,
+    Continue,
+    Other(String),
+}
+
 impl Interpreter {
     pub fn new() -> Self {
         Interpreter {
@@ -18,22 +24,19 @@ impl Interpreter {
         }
     }
 
-    pub fn interpret(&mut self, statements: Vec<Stmt>) -> Result<(), String> {
+    pub fn interpret(&mut self, statements: Vec<Stmt>) -> Result<(), Error> {
         for i in statements {
             self.execute(i)?;
         }
         Ok(())
     }
-    pub fn execute_block(&mut self, stmt: Vec<Stmt>) -> Result<(), String> {
-        
-
-       
-        let mut env = Rc::new(RefCell::new (Environment::new()));
+    pub fn execute_block(&mut self, stmt: Vec<Stmt>) -> Result<(), Error> {
+        let mut env = Rc::new(RefCell::new(Environment::new()));
         env.as_ref().borrow_mut().enclosing = Some(self.environemt.clone());
 
         let previous = self.environemt.clone();
         self.environemt = env;
-        
+
         for i in stmt {
             self.execute(i)?;
         }
@@ -41,64 +44,96 @@ impl Interpreter {
         Ok(())
     }
 
-    pub fn execute(&mut self, stmt: Stmt) -> Result<(), String> {
+    pub fn execute(&mut self, stmt: Stmt) -> Result<(), Error> {
         match stmt {
-            Stmt::While { condition, stmts }=>{
-                while self.eval(condition.clone())?.is_truthly(){
-                    self.execute(*stmts.clone())?;
+            Stmt::Break => Err(Error::Break),
+            Stmt::Continue => Err(Error::Continue),
+
+            Stmt::While {
+                ref condition,
+                ref stmts,
+            } => {
+                'not_lb: while self.eval(condition.clone()).unwrap().is_truthly() {
+                    match self.execute(*stmts.clone()) {
+                        Err(Error::Continue) => {
+                            // what if i just increment before the continue .?? it will fix the
+                            // infinte loop ig
+                            continue 'not_lb;
+                        }
+                        Err(Error::Break) => break 'not_lb,
+                        Err(Error::Other(a)) => return Err(Error::Other(a)),
+                        Ok(_) => {}
+                    }
                 }
                 Ok(())
-            },
-            Stmt::If { condition, then_branch, else_branch }=>{
-                let condition = self.eval(condition)?;
-                if condition.is_truthly(){
+            }
+            Stmt::If {
+                condition,
+                then_branch,
+                else_branch,
+            } => {
+                let condition = self.eval(condition).unwrap();
+                if condition.is_truthly() {
                     self.execute(*then_branch)?;
-                }else if else_branch.is_some(){
+                } else if else_branch.is_some() {
                     self.execute(*else_branch.unwrap())?;
                 }
                 Ok(())
-            },
+            }
             Stmt::Block { stmts } => self.execute_block(stmts),
             Stmt::Variable { op, expr } => {
                 if let Some(a) = expr {
-                    let eval = self.eval(a)?;
-                    self.environemt.as_ref().borrow_mut().define(op.lexeme.unwrap(), eval)
+                    let eval = self.eval(a).unwrap();
+                    self.environemt
+                        .as_ref()
+                        .borrow_mut()
+                        .define(op.lexeme.unwrap(), eval)
                 } else {
                     let val = Literal::Nil;
-                    self.environemt.as_ref().borrow_mut().define(op.lexeme.unwrap(), val);
+                    self.environemt
+                        .as_ref()
+                        .borrow_mut()
+                        .define(op.lexeme.unwrap(), val);
                 }
                 Ok(())
             }
             Stmt::Print { expr } => {
-                let value = self.eval(expr)?;
+                let value = self.eval(expr).unwrap();
                 println!("{}", value);
                 Ok(())
             }
             Stmt::Expr { expr } => {
-                self.eval(expr)?;
+                self.eval(expr).unwrap();
                 Ok(())
             }
         }
     }
     pub fn eval(&mut self, expr: Expr) -> Result<Literal, String> {
         match expr {
-            Expr::Logical { left, op, right }=>{
+            Expr::Logical { left, op, right } => {
                 let left = self.eval(*left)?;
-                if op.token_type == TokenType::Or{
-                    if left.is_truthly(){
+                if op.token_type == TokenType::Or {
+                    if left.is_truthly() {
                         return Ok(left);
                     }
-                }else if !left.is_truthly(){
-                         return Ok(left);
+                } else if !left.is_truthly() {
+                    return Ok(left);
                 }
                 Ok(self.eval(*right)?)
-            },
+            }
             Expr::Assign { token, value } => {
                 let expr = self.eval(*value)?;
-                self.environemt.as_ref().borrow_mut().assign(&token.lexeme.unwrap(), &expr)?;
+                self.environemt
+                    .as_ref()
+                    .borrow_mut()
+                    .assign(&token.lexeme.unwrap(), &expr)?;
                 Ok(expr)
             }
-            Expr::Variable { token } => self.environemt.as_ref().borrow_mut().get(token.lexeme.unwrap()),
+            Expr::Variable { token } => self
+                .environemt
+                .as_ref()
+                .borrow_mut()
+                .get(token.lexeme.unwrap()),
             Expr::Literal { value } => Ok(value.clone()),
             Expr::Group { value } => Ok(self.eval(*value)?),
             Expr::Unary { op, expr } => {

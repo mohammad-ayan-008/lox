@@ -42,13 +42,13 @@ impl Display for Literal {
     }
 }
 impl Literal {
-    pub fn is_truthly(&self)->bool{
+    pub fn is_truthly(&self) -> bool {
         match self {
-            Literal::Nil=> false,
+            Literal::Nil => false,
             Literal::True => true,
             Literal::False => false,
-            _=> true,
-        } 
+            _ => true,
+        }
     }
 }
 impl PartialEq for Literal {
@@ -60,26 +60,21 @@ impl PartialEq for Literal {
             (Literal::String(a), Literal::String(b)) => {
                 a.borrow().to_string() == b.borrow().to_string()
             }
-            (Literal::False, any) => matches!(any,Literal::False),  
-            (Literal::True, any) => matches!(any,Literal::True),
-            (Literal::Number(_), any) => matches!(any,Literal::Number(_)),
-            (Literal::String(_), any) => matches!(any,Literal::String(_)),
+            (Literal::False, any) => matches!(any, Literal::False),
+            (Literal::True, any) => matches!(any, Literal::True),
+            (Literal::Number(_), any) => matches!(any, Literal::Number(_)),
+            (Literal::String(_), any) => matches!(any, Literal::String(_)),
         }
     }
 }
 
 impl From<bool> for Literal {
     fn from(value: bool) -> Self {
-        if value{
-            Literal::True
-        } else {
-            Literal::False
-        }
+        if value { Literal::True } else { Literal::False }
     }
 }
 
-
-#[derive(Debug,Clone)]
+#[derive(Debug, Clone)]
 pub enum Expr {
     Literal {
         value: Literal,
@@ -99,7 +94,7 @@ pub enum Expr {
     Variable {
         token: Token,
     },
-    Logical{
+    Logical {
         left: Box<Expr>,
         op: Token,
         right: Box<Expr>,

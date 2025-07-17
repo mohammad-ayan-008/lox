@@ -5,7 +5,7 @@ use std::{
     sync::Mutex,
 };
 
-use interpreter::Interpreter;
+use interpreter::{Error, Interpreter};
 use parser::Parser;
 mod Scanner;
 mod Tokentype;
@@ -54,7 +54,10 @@ pub fn run(source: String, interpreter: &mut Interpreter) {
         Ok(a) => {
             match interpreter.interpret(a) {
                 Ok(_) => (),
-                Err(e) => println!("{}", e),
+                Err(e) => match e {
+                    Error::Other(a) => println!("{}", a),
+                    _ => (),
+                },
             };
         }
         Err(e) => println!("{}", e),
