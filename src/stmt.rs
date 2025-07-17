@@ -23,6 +23,7 @@ pub enum Stmt {
     While {
         condition: Expr,
         stmts: Box<Stmt>,
+        finally:Option<Box<Expr>>
     },
     Break,
     Continue,

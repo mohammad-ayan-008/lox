@@ -52,18 +52,25 @@ impl Interpreter {
             Stmt::While {
                 ref condition,
                 ref stmts,
+                finally
             } => {
                 'not_lb: while self.eval(condition.clone()).unwrap().is_truthly() {
                     match self.execute(*stmts.clone()) {
                         Err(Error::Continue) => {
                             // what if i just increment before the continue .?? it will fix the
                             // infinte loop ig
+                            finally.as_ref().map(|a| {
+                               self.eval(*a.clone()).unwrap()
+                              });
                             continue 'not_lb;
                         }
                         Err(Error::Break) => break 'not_lb,
                         Err(Error::Other(a)) => return Err(Error::Other(a)),
                         Ok(_) => {}
                     }
+                    finally.as_ref().map(|a| {
+                      self.eval(*a.clone()).unwrap()
+                    });
                 }
                 Ok(())
             }
