@@ -110,22 +110,27 @@ impl Parser {
             condition = Some(self.expression()?);
         }
         self.consume(TokenType::Semicolon, "Expected ; after loop condition ")?;
-        
-        let mut finally = None;
+        let mut expr = None;
         if !self.check(TokenType::RightParen) {
-            finally = Some(self.expression()?);
+            expr = Some(self.expression()?);
         }
-        
         self.consume(TokenType::RightParen, "Expected ) after for clause")?;
-        
         self.loop_depth += 1;
         let mut body = self.statements()?;
         self.loop_depth -= 1;
-
         if !matches!(body.clone(), Stmt::Block { stmts }) {
             return Err("Expected a block".to_owned());
         }
-        
+        if expr.is_some() {
+            body = Stmt::Block {
+                stmts: vec![
+                    body,
+                    Stmt::Expr {
+                        expr: expr.unwrap(),
+                    },
+                ],
+            }
+        }
         if condition.is_none() {
             condition = Some(Expr::Literal {
                 value: Literal::True,
@@ -134,7 +139,6 @@ impl Parser {
         body = Stmt::While {
             condition: condition.unwrap(),
             stmts: Box::new(body),
-            finally: finally.map(Box::new)
         };
 
         if init.is_some() {
@@ -144,7 +148,6 @@ impl Parser {
         }
         Ok(body)
     }
-    
     pub fn while_statement(&mut self) -> Result<Stmt, String> {
         self.consume(TokenType::LeftParen, "Expected (  after while ")?;
         let expr = self.expression()?;
@@ -158,7 +161,6 @@ impl Parser {
             Ok(Stmt::While {
                 condition: expr,
                 stmts: Box::new(statements),
-                finally: None
             })
         }
     }

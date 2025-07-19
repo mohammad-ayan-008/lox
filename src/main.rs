@@ -50,10 +50,16 @@ pub fn run(source: String, interpreter: &mut Interpreter) {
     let mut scanner = Scanner::Scanner::new(source);
     scanner.scan_tokens();
     let mut parser = Parser::new(scanner.tokens);
+<<<<<<< HEAD
     let result = parser.parse_stmt();
     match result {
         Ok(statements) => {
             match interpreter.interpret(statements.clone()) {
+=======
+    match parser.parse_stmt() {
+        Ok(a) => {
+            match interpreter.interpret(a) {
+>>>>>>> parent of babcc70 (added support for continue)
                 Ok(_) => (),
                 Err(e) => {
                     if let Error::Other(a) = e {
