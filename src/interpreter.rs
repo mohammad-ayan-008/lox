@@ -1,4 +1,4 @@
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, fmt::Debug, io::{stdin, stdout, Seek, Write}, ops::Deref, rc::Rc, time::{SystemTime, UNIX_EPOCH}};
 
 use crate::{
     Tokentype::TokenType,
@@ -7,9 +7,45 @@ use crate::{
     stmt::{self, Stmt},
 };
 
+pub trait LoxCallable{
+    fn arity(&self)->usize;
+    fn call(&self,interpreter:&mut Interpreter,args:Vec<Literal>)-> Literal;
+}
+
 pub struct Interpreter {
     environemt: Rc<RefCell<Environment>>,
+    global:Rc<RefCell<Environment>>
 }
+// global functions
+struct clock;
+impl LoxCallable for clock{
+    fn arity(&self)->usize {
+       0 
+    }
+
+    fn call(&self,interpreter:&mut Interpreter,args:Vec<Literal>)-> Literal {
+        let time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis();
+        Literal::Number(time as f64)
+    }
+}
+struct input;
+impl LoxCallable for input{
+    fn arity(&self)->usize {
+       1
+    }
+
+    fn call(&self,interpreter:&mut Interpreter,args:Vec<Literal>)-> Literal {
+        if let Literal::String(a) = args.get(0).unwrap(){
+            print!("{}",a.clone().borrow());
+            stdout().flush().unwrap();
+            let mut data = String::new();
+            stdin().read_line(&mut data).unwrap();
+            return Literal::String(Rc::new(RefCell::new(data)));
+        }
+        Literal::Nil
+    }
+}
+
 
 pub enum Error {
     Break,
@@ -17,11 +53,25 @@ pub enum Error {
     Other(String),
 }
 
+impl Default for Interpreter{
+    fn default() -> Self {
+        let env =Rc::new(RefCell::new(Environment::new()));
+     Interpreter {
+            global:env.clone(),
+            environemt: env
+        }
+ 
+    }
+}
+
 impl Interpreter {
     pub fn new() -> Self {
-        Interpreter {
-            environemt: Rc::new(RefCell::new(Environment::new())),
-        }
+        let i = Interpreter::default();
+        let func_clock:Rc<dyn LoxCallable> = Rc::new(clock);
+        let func_inp:Rc<dyn LoxCallable> = Rc::new(input);
+        i.global.as_ref().borrow_mut().define("clock".to_string(), Literal::Function(func_clock));
+        i.global.as_ref().borrow_mut().define("input".to_string(), Literal::Function(func_inp));
+        i
     }
 
     pub fn interpret(&mut self, statements: Vec<Stmt>) -> Result<(), Error> {
@@ -117,6 +167,22 @@ impl Interpreter {
     }
     pub fn eval(&mut self, expr: Expr) -> Result<Literal, String> {
         match expr {
+            Expr::Call { callie, paren, args }=>{
+                let callie = self.eval(*callie)?;
+                let mut arg = vec![];
+                for i in args{
+                    arg.push(self.eval(i.clone())?);
+                }
+
+                if let Literal::Function(a) = callie{
+                    if a.arity() != arg.len(){
+                      return Err("arguments mismached".to_string())
+                    }
+                    Ok(a.call(self,arg))
+                }else {
+                    Err("given type is not callable".to_string())
+                }
+            },
             Expr::Logical { left, op, right } => {
                 let left = self.eval(*left)?;
                 if op.token_type == TokenType::Or {

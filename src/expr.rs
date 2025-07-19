@@ -15,24 +15,39 @@ operator       → "==" | "!=" | "<" | "<=" | ">" | ">="
 use std::{
     cell::RefCell,
     env::set_var,
-    fmt::{Display, write},
+    fmt::{write, Debug, Display},
     ops::Not,
     rc::Rc,
 };
 
-use crate::Tokentype::{Token, TokenType};
+use crate::{interpreter::LoxCallable, Tokentype::{Token, TokenType}};
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub enum Literal {
+    Function(Rc<dyn LoxCallable>),
     Number(f64),
     String(Rc<RefCell<String>>),
     False,
     True,
     Nil,
 }
+impl Debug for Literal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Literal::Function(a)=>write!(f, "func"),
+            Literal::Nil => write!(f, "nil"),
+            Literal::True => write!(f, "true"),
+            Literal::False => write!(f, "false"),
+            Literal::Number(a) => write!(f, "{}", a),
+            Literal::String(a) => write!(f, "{}", a.borrow()),
+        }
+    }
+}
+
 impl Display for Literal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Literal::Function(a)=>write!(f, "func"),
             Literal::Nil => write!(f, "nil"),
             Literal::True => write!(f, "true"),
             Literal::False => write!(f, "false"),
@@ -54,6 +69,7 @@ impl Literal {
 impl PartialEq for Literal {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
+            (Literal::Function(a),any)=> panic!("cant compare a function to other type"),
             (Literal::Nil, Literal::Nil) => true,
             (Literal::Nil, any) => false,
             (Literal::Number(a), Literal::Number(b)) => a == b,
@@ -103,4 +119,9 @@ pub enum Expr {
         token: Token,
         value: Box<Expr>,
     },
+    Call{
+        callie: Box<Expr>,
+        paren: Token,
+        args: Vec<Expr>
+    }
 }

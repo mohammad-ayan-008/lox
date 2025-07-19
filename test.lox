@@ -1,5 +1,12 @@
+//user inp
+var inp = input("enter your name ");
+print(inp);
+
+var time = clock();
+print("current time in millis = " +time);
+
 for (var i = 0;i<10;i = i + 1){
-   if (i == 2){
+   if (i == 1 or i == 2){
       continue
    }
    print(i);

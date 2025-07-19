@@ -50,14 +50,15 @@ pub fn run(source: String, interpreter: &mut Interpreter) {
     let mut scanner = Scanner::Scanner::new(source);
     scanner.scan_tokens();
     let mut parser = Parser::new(scanner.tokens);
-    let result = dbg!( parser.parse_stmt());
+    let result = parser.parse_stmt();
     match result {
         Ok(statements) => {
             match interpreter.interpret(statements.clone()) {
                 Ok(_) => (),
-                Err(e) => match e {
-                    Error::Other(a) => println!("{}", a),
-                    _ => (),
+                Err(e) => {
+                    if let Error::Other(a) = e {
+                        println!("{}", a);
+                    }
                 },
             };
         }

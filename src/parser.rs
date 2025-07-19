@@ -1,4 +1,4 @@
-use std::{borrow::Borrow, cell::RefCell, io::stdin, rc::Rc};
+use std::{borrow::Borrow, cell::RefCell, error::Error, io::stdin, rc::Rc};
 
 use crate::{
     Tokentype::{Token, TokenType},
@@ -325,8 +325,38 @@ impl Parser {
                 expr: Box::new(expr),
             });
         }
-        self.primary()
+        self.call()
     }
+
+    pub fn call(&mut self)->Result<Expr,String>{
+        let mut  expr = self.primary()?;
+        while true{
+
+            if self.match_(&[TokenType::LeftParen]){
+                expr = self.finish_call(expr)?;
+            }else {
+                break;
+            }
+        }
+        Ok(expr)
+    }
+    pub fn finish_call(&mut self,expr:Expr)->Result<Expr,String>{
+        let mut args = vec![];
+        if ! self.check(TokenType::RightParen){
+             if args.len() >= 255{
+                return Err("cant have more than 255 args".to_string());
+             }
+            'lo: loop {
+                args.push(self.expression()?);
+                if !self.match_(&[TokenType::Comma]){
+                    break 'lo;
+                }
+           } 
+        }
+        let token = self.consume(TokenType::RightParen, "Expected ) after arguments.")?;
+        Ok(Expr::Call { callie: Box::new(expr), paren: token, args })
+    }
+
     pub fn consume(&mut self, token: TokenType, msg: &str) -> Result<Token, String> {
         if self.check(token) {
             Ok(self.advance())
