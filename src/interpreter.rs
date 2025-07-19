@@ -8,6 +8,8 @@ use crate::{
 };
 
 
+
+
 pub trait LoxCallable{
     fn arity(&self)->usize;
     fn call(&self,interpreter:&mut Interpreter,args:Vec<Literal>)-> Literal;
