@@ -1,4 +1,4 @@
-use std::{cell::RefCell, fmt::Debug, io::{stdin, stdout, Seek, Write}, ops::Deref, rc::Rc, time::{SystemTime, UNIX_EPOCH}};
+use std::{cell::RefCell, env, fmt::Debug, io::{stdin, stdout, Seek, Write}, ops::Deref, rc::Rc, time::{SystemTime, UNIX_EPOCH}};
 
 use crate::{
     Tokentype::TokenType,
@@ -7,8 +7,37 @@ use crate::{
     stmt::{self, Stmt},
 };
 
+struct LoxFunction{
+    decl: Stmt  // will be f(x)
+}
 
-
+impl LoxFunction{
+    fn new(decl:Stmt)->Self{
+        Self{
+            decl
+        }
+    }
+}
+impl LoxCallable for LoxFunction{
+    fn arity(&self)->usize {
+       let Stmt::Function_Decl { name, params, body } = &self.decl else {unreachable!()};
+       params.len()
+    }
+    fn call(&self,interpreter:&mut Interpreter,args:Vec<Literal>)-> Literal {
+        let mut environment =  Rc::new( RefCell::new (Environment::new()));
+        environment.as_ref()
+            .borrow_mut().enclosing = Some(interpreter.global.clone());
+        let Stmt::Function_Decl { name, params, body } = &self.decl else{unreachable!()};
+        for (index,i) in params.iter().enumerate(){
+            environment.as_ref().borrow_mut().define(i.lexeme.as_ref().unwrap().clone(), args.get(index).unwrap().clone());
+        }
+       if let Err(Error::Return(a)) = interpreter.execute_block(body.clone(),environment){
+            return a;
+       }
+       Literal::Nil
+        
+    }
+}
 
 pub trait LoxCallable{
     fn arity(&self)->usize;
@@ -50,9 +79,11 @@ impl LoxCallable for input{
 }
 
 
+#[derive(Debug)]
 pub enum Error {
     Break,
     Continue,
+    Return(Literal),
     Other(String),
 }
 
@@ -83,8 +114,7 @@ impl Interpreter {
         }
         Ok(())
     }
-    pub fn execute_block(&mut self, stmt: Vec<Stmt>) -> Result<(), Error> {
-        let mut env = Rc::new(RefCell::new(Environment::new()));
+    pub fn execute_block(&mut self, stmt: Vec<Stmt>,env:Rc<RefCell<Environment>>) -> Result<(), Error> {
         env.as_ref().borrow_mut().enclosing = Some(self.environemt.clone());
 
         let previous = self.environemt.clone();
@@ -99,9 +129,18 @@ impl Interpreter {
 
     pub fn execute(&mut self, stmt: Stmt) -> Result<(), Error> {
         match stmt {
+            Stmt::Return { token, value }=>{
+                let value = self.eval(value).unwrap();
+                Err(Error::Return(value))
+            }
             Stmt::Break => Err(Error::Break),
             Stmt::Continue => Err(Error::Continue),
-
+            Stmt::Function_Decl { ref name, params:_, body:_ }=>{
+                let lox_fn = LoxFunction::new(stmt.clone());
+                let callable:Rc<dyn LoxCallable> = Rc::new(lox_fn); 
+                self.environemt.as_ref().borrow_mut().define(name.lexeme.clone().unwrap(), Literal::Function(callable));
+                Ok(())
+            },
             Stmt::While {
                 ref condition,
                 ref stmts,
@@ -113,16 +152,17 @@ impl Interpreter {
                             // what if i just increment before the continue .?? it will fix the
                             // infinte loop ig
                             finally.as_ref().map(|a| {
-                               self.eval(*a.clone()).unwrap()
+                               self.eval(a.clone()).unwrap()
                               });
                             continue 'not_lb;
                         }
                         Err(Error::Break) => break 'not_lb,
                         Err(Error::Other(a)) => return Err(Error::Other(a)),
+                        Err(Error::Return(a)) => return  Err(Error::Return(a)),
                         Ok(_) => {}
                     }
                     finally.as_ref().map(|a| {
-                      self.eval(*a.clone()).unwrap()
+                      self.eval(a.clone()).unwrap()
                     });
                 }
                 Ok(())
@@ -140,7 +180,10 @@ impl Interpreter {
                 }
                 Ok(())
             }
-            Stmt::Block { stmts } => self.execute_block(stmts),
+            Stmt::Block { stmts } => {
+                let env = Rc::new(RefCell::new(Environment::new()));
+                self.execute_block(stmts,env)
+            },
             Stmt::Variable { op, expr } => {
                 if let Some(a) = expr {
                     let eval = self.eval(a).unwrap();

@@ -25,6 +25,7 @@ pub struct Parser {
     current: usize,
     loop_depth: usize,
 }
+
 impl Parser {
     pub fn new(tokens: Vec<Token>) -> Self {
         Self {
@@ -66,6 +67,10 @@ impl Parser {
     pub fn statements(&mut self) -> Result<Stmt, String> {
         if self.match_(&[TokenType::Print]) {
             self.print_statement()
+        }else if  self.match_(&[TokenType::Return]){
+            self.return_statement()
+        }else if self.match_(&[TokenType::Fun]) {
+            self.func_statement("function")
         } else if self.match_(&[TokenType::For]) {
             self.for_statement()
         } else if self.match_(&[TokenType::If]) {
@@ -95,6 +100,39 @@ impl Parser {
         }
     }
 
+    pub fn return_statement(&mut self)->Result<Stmt,String>{
+        let token = self.previous().clone();
+        let mut expr = Expr::Literal { value: Literal::Nil };
+        if !self.check(TokenType::Semicolon){
+            expr = self.expression()?;
+        }
+        self.consume(TokenType::Semicolon, "Expected ; after an expression")?;
+        Ok(Stmt::Return { token:token, value: expr })
+    }
+
+    pub fn func_statement(&mut self,name:&str)->Result<Stmt,String>{
+        let fn_name = self.consume(TokenType::Identifier, &format!("Expected kind {} name",name))?; 
+        let left_paren = self.consume(TokenType::LeftParen, &format!("Expected ( after {} name ",name))?;
+        let mut params = vec![];
+        loop {
+            if params.len() >= 255 {
+                  return Err("cant have more than 255 args".to_string());
+            }
+            if self.check(TokenType::RightParen){break;}
+            params.push(self.consume(TokenType::Identifier, "Expected parameter name")?);
+            if !self.match_(&[TokenType::Comma]){
+                break;
+            }
+        }
+
+        let right_paren = self.consume(TokenType::RightParen, "Expected ) after parameters")?;
+        self.consume(TokenType::LeftBrace, "Expected { before a block")?;
+        let val = self.block()?;
+        let Stmt::Block { stmts } = val else{unreachable!()};
+        Ok(Stmt::Function_Decl { name: fn_name, params, body: stmts })   
+     }
+
+
     pub fn for_statement(&mut self) -> Result<Stmt, String> {
         self.consume(TokenType::LeftParen, "Expected ( after for")?;
         let mut init = None;
@@ -121,16 +159,6 @@ impl Parser {
         if !matches!(body.clone(), Stmt::Block { stmts }) {
             return Err("Expected a block".to_owned());
         }
-        if expr.is_some() {
-            body = Stmt::Block {
-                stmts: vec![
-                    body,
-                    Stmt::Expr {
-                        expr: expr.unwrap(),
-                    },
-                ],
-            }
-        }
         if condition.is_none() {
             condition = Some(Expr::Literal {
                 value: Literal::True,
@@ -139,6 +167,7 @@ impl Parser {
         body = Stmt::While {
             condition: condition.unwrap(),
             stmts: Box::new(body),
+            finally:expr
         };
 
         if init.is_some() {
@@ -161,6 +190,7 @@ impl Parser {
             Ok(Stmt::While {
                 condition: expr,
                 stmts: Box::new(statements),
+                finally:None
             })
         }
     }
