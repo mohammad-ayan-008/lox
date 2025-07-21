@@ -15,18 +15,22 @@ operator       → "==" | "!=" | "<" | "<=" | ">" | ">="
 use std::{
     cell::RefCell,
     env::set_var,
-    fmt::{write, Debug, Display},
+    fmt::{Debug, Display, write},
+    hash::Hash,
     ops::Not,
     rc::Rc,
 };
 
-use crate::{interpreter::LoxCallable, Tokentype::{Token, TokenType}};
+use crate::{
+    Tokentype::{Token, TokenType},
+    interpreter::LoxCallable,
+};
 
 #[derive(Clone)]
 pub enum Literal {
     Function(Rc<dyn LoxCallable>),
     Number(f64),
-    String(Rc<RefCell<String>>),
+    String(String),
     False,
     True,
     Nil,
@@ -34,12 +38,12 @@ pub enum Literal {
 impl Debug for Literal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Literal::Function(a)=>write!(f, "func"),
+            Literal::Function(a) => write!(f, "func"),
             Literal::Nil => write!(f, "nil"),
             Literal::True => write!(f, "true"),
             Literal::False => write!(f, "false"),
             Literal::Number(a) => write!(f, "{}", a),
-            Literal::String(a) => write!(f, "{}", a.borrow()),
+            Literal::String(a) => write!(f, "{}", a),
         }
     }
 }
@@ -47,12 +51,12 @@ impl Debug for Literal {
 impl Display for Literal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Literal::Function(a)=>write!(f, "func"),
+            Literal::Function(a) => write!(f, "func"),
             Literal::Nil => write!(f, "nil"),
             Literal::True => write!(f, "true"),
             Literal::False => write!(f, "false"),
             Literal::Number(a) => write!(f, "{}", a),
-            Literal::String(a) => write!(f, "{}", a.borrow()),
+            Literal::String(a) => write!(f, "{}", a),
         }
     }
 }
@@ -60,7 +64,6 @@ impl Literal {
     pub fn is_truthly(&self) -> bool {
         match self {
             Literal::Nil => false,
-            Literal::True => true,
             Literal::False => false,
             _ => true,
         }
@@ -69,17 +72,13 @@ impl Literal {
 impl PartialEq for Literal {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (Literal::Function(a),any)=> panic!("cant compare a function to other type"),
+            (Literal::Function(a), any) => panic!("cant compare a function to other type"),
             (Literal::Nil, Literal::Nil) => true,
-            (Literal::Nil, any) => false,
+            (Literal::True, Literal::True) => true,
+            (Literal::False, Literal::False) => true,
             (Literal::Number(a), Literal::Number(b)) => a == b,
-            (Literal::String(a), Literal::String(b)) => {
-                a.borrow().to_string() == b.borrow().to_string()
-            }
-            (Literal::False, any) => matches!(any, Literal::False),
-            (Literal::True, any) => matches!(any, Literal::True),
-            (Literal::Number(_), any) => matches!(any, Literal::Number(_)),
-            (Literal::String(_), any) => matches!(any, Literal::String(_)),
+            (Literal::String(a), Literal::String(b)) => a == b,
+            _ => false,
         }
     }
 }
@@ -90,10 +89,11 @@ impl From<bool> for Literal {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
     Literal {
         value: Literal,
+
     },
     Group {
         value: Box<Expr>,
@@ -109,6 +109,7 @@ pub enum Expr {
     },
     Variable {
         token: Token,
+        id:usize
     },
     Logical {
         left: Box<Expr>,
@@ -118,10 +119,11 @@ pub enum Expr {
     Assign {
         token: Token,
         value: Box<Expr>,
+        id:usize
     },
-    Call{
+    Call {
         callie: Box<Expr>,
         paren: Token,
-        args: Vec<Expr>
-    }
+        args: Vec<Expr>,
+    },
 }

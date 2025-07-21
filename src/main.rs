@@ -7,12 +7,14 @@ use std::{
 
 use interpreter::{Error, Interpreter};
 use parser::Parser;
+use resolver::Resolver;
 mod Scanner;
 mod Tokentype;
 mod environment;
 mod expr;
 mod interpreter;
 mod parser;
+mod resolver;
 mod stmt;
 static ERROR: Mutex<bool> = Mutex::new(false);
 fn main() {
@@ -53,15 +55,17 @@ pub fn run(source: String, interpreter: &mut Interpreter) {
     let result = parser.parse_stmt();
     match result {
         Ok(statements) => {
-            match interpreter.interpret(statements.clone()){
-               Ok(())=>(),
-               Err(e)=>{
-                    if let Error::Other(e) = e{
-                        println!("{}",e);
+           let mut resolver = Resolver::new(interpreter);
+            resolver.resolve(statements.clone());
+            match interpreter.interpret(statements.clone()) {
+                Ok(()) => (),
+                Err(e) => {
+                    if let Error::Other(e) = e {
+                        println!("{}", e);
                     }
-               }
+                }
             }
-         }
-        Err(e)=>println!("{}",e)
+        }
+        Err(e) => println!("{}", e),
     }
 }

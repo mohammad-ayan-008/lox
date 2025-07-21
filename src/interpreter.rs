@@ -1,83 +1,99 @@
-use std::{cell::RefCell, env, fmt::Debug, io::{stdin, stdout, Seek, Write}, ops::Deref, rc::Rc, time::{SystemTime, UNIX_EPOCH}};
-
-use crate::{
-    Tokentype::TokenType,
-    environment::Environment,
-    expr::{Expr, Literal},
-    stmt::{self, Stmt},
+use std::{
+    cell::RefCell,
+    collections::HashMap,
+    env,
+    fmt::Debug,
+    io::{Seek, Write, stdin, stdout},
+    net::ToSocketAddrs,
+    ops::Deref,
+    rc::Rc,
+    time::{SystemTime, UNIX_EPOCH},
 };
 
-struct LoxFunction{
-    decl: Stmt  // will be f(x)
+use crate::{
+    environment::{self, Environment}, expr::{Expr, Literal}, stmt::{self, Stmt}, Tokentype::TokenType
+};
+
+struct LoxFunction {
+    decl: Stmt, // will be f(x)
+    closure: Rc<RefCell<Environment>>,
 }
 
-impl LoxFunction{
-    fn new(decl:Stmt)->Self{
-        Self{
-            decl
-        }
+impl LoxFunction {
+    fn new(decl: Stmt,closure:Rc<RefCell<Environment>>) -> Self {
+        Self { decl,closure }
     }
 }
-impl LoxCallable for LoxFunction{
-    fn arity(&self)->usize {
-       let Stmt::Function_Decl { name, params, body } = &self.decl else {unreachable!()};
-       params.len()
+impl LoxCallable for LoxFunction {
+    fn arity(&self) -> usize {
+        let Stmt::Function_Decl { name, params, body } = &self.decl else {
+            unreachable!()
+        };
+        params.len()
     }
-    fn call(&self,interpreter:&mut Interpreter,args:Vec<Literal>)-> Literal {
-        let mut environment =  Rc::new( RefCell::new (Environment::new()));
-        environment.as_ref()
-            .borrow_mut().enclosing = Some(interpreter.global.clone());
-        let Stmt::Function_Decl { name, params, body } = &self.decl else{unreachable!()};
-        for (index,i) in params.iter().enumerate(){
-            environment.as_ref().borrow_mut().define(i.lexeme.as_ref().unwrap().clone(), args.get(index).unwrap().clone());
-        }
-       if let Err(Error::Return(a)) = interpreter.execute_block(body.clone(),environment){
-            return a;
-       }
-       Literal::Nil
+
+    fn call(&self, interpreter: &mut Interpreter, args: Vec<Literal>) -> Literal {
+
+        let environment = Environment::enclose(Rc::clone(&self.closure));
         
-    }
-}
-
-pub trait LoxCallable{
-    fn arity(&self)->usize;
-    fn call(&self,interpreter:&mut Interpreter,args:Vec<Literal>)-> Literal;
-}
-
-pub struct Interpreter {
-    environemt: Rc<RefCell<Environment>>,
-    global:Rc<RefCell<Environment>>
-}
-// global functions
-struct clock;
-impl LoxCallable for clock{
-    fn arity(&self)->usize {
-       0 
-    }
-
-    fn call(&self,interpreter:&mut Interpreter,args:Vec<Literal>)-> Literal {
-        let time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis();
-        Literal::Number(time as f64)
-    }
-}
-struct input;
-impl LoxCallable for input{
-    fn arity(&self)->usize {
-       1
-    }
-
-    fn call(&self,interpreter:&mut Interpreter,args:Vec<Literal>)-> Literal {
-        if let Literal::String(a) = args.get(0).unwrap(){
-            print!("{}",a.clone().borrow());
-            stdout().flush().unwrap();
-            let mut data = String::new();
-            stdin().read_line(&mut data).unwrap();
-            return Literal::String(Rc::new(RefCell::new(data)));
+        let Stmt::Function_Decl { name, params, body } = &self.decl else {
+            unreachable!()
+        };
+        for (index, i) in params.iter().enumerate() {
+            environment.as_ref().borrow_mut().define(
+                i.lexeme.as_ref().unwrap().clone(),
+                args.get(index).unwrap().clone(),
+            );
+        }
+        if let Err(Error::Return(a)) = interpreter.execute_block(body.clone(), environment) {
+            return a;
         }
         Literal::Nil
     }
 }
 
+pub trait LoxCallable {
+    fn arity(&self) -> usize;
+    fn call(&self, interpreter: &mut Interpreter, args: Vec<Literal>) -> Literal;
+}
+type ExprID = usize;
+pub struct Interpreter {
+    environemt: Rc<RefCell<Environment>>,
+    global: Rc<RefCell<Environment>>,
+    locals: HashMap<ExprID, usize>,
+}
+// global functions
+struct clock;
+impl LoxCallable for clock {
+    fn arity(&self) -> usize {
+        0
+    }
+
+    fn call(&self, interpreter: &mut Interpreter, args: Vec<Literal>) -> Literal {
+        let time = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_millis();
+        Literal::Number(time as f64)
+    }
+}
+struct input;
+impl LoxCallable for input {
+    fn arity(&self) -> usize {
+        1
+    }
+
+    fn call(&self, interpreter: &mut Interpreter, args: Vec<Literal>) -> Literal {
+        if let Literal::String(a) = args.get(0).unwrap() {
+            print!("{}", a);
+            stdout().flush().unwrap();
+            let mut data = String::new();
+            stdin().read_line(&mut data).unwrap();
+            return Literal::String(data);
+        }
+        Literal::Nil
+    }
+}
 
 #[derive(Debug)]
 pub enum Error {
@@ -87,34 +103,46 @@ pub enum Error {
     Other(String),
 }
 
-impl Default for Interpreter{
+impl Default for Interpreter {
     fn default() -> Self {
-        let env =Rc::new(RefCell::new(Environment::new()));
-     Interpreter {
-            global:env.clone(),
-            environemt: env
+        let env = Rc::new(RefCell::new(Environment::new()));
+        Interpreter {
+            global: env.clone(),
+            environemt: env,
+            locals: HashMap::new(),
         }
- 
     }
 }
 
 impl Interpreter {
     pub fn new() -> Self {
         let i = Interpreter::default();
-        let func_clock:Rc<dyn LoxCallable> = Rc::new(clock);
-        let func_inp:Rc<dyn LoxCallable> = Rc::new(input);
-        i.global.as_ref().borrow_mut().define("clock".to_string(), Literal::Function(func_clock));
-        i.global.as_ref().borrow_mut().define("input".to_string(), Literal::Function(func_inp));
+        let func_clock: Rc<dyn LoxCallable> = Rc::new(clock);
+        let func_inp: Rc<dyn LoxCallable> = Rc::new(input);
+        i.global
+            .as_ref()
+            .borrow_mut()
+            .define("clock".to_owned(), Literal::Function(func_clock));
+        i.global
+            .as_ref()
+            .borrow_mut()
+            .define("input".to_owned(), Literal::Function(func_inp));
         i
     }
-
+    pub fn resolve(&mut self, id:usize, depth: usize) {
+        self.locals.insert(id, depth);
+    }
     pub fn interpret(&mut self, statements: Vec<Stmt>) -> Result<(), Error> {
         for i in statements {
             self.execute(i)?;
         }
         Ok(())
     }
-    pub fn execute_block(&mut self, stmt: Vec<Stmt>,env:Rc<RefCell<Environment>>) -> Result<(), Error> {
+    pub fn execute_block(
+        &mut self,
+        stmt: Vec<Stmt>,
+        env: Rc<RefCell<Environment>>,
+    ) -> Result<(), Error> {
         env.as_ref().borrow_mut().enclosing = Some(self.environemt.clone());
 
         let previous = self.environemt.clone();
@@ -129,41 +157,44 @@ impl Interpreter {
 
     pub fn execute(&mut self, stmt: Stmt) -> Result<(), Error> {
         match stmt {
-            Stmt::Return { token, value }=>{
+            Stmt::Return { token, value } => {
                 let value = self.eval(value).unwrap();
                 Err(Error::Return(value))
             }
             Stmt::Break => Err(Error::Break),
             Stmt::Continue => Err(Error::Continue),
-            Stmt::Function_Decl { ref name, params:_, body:_ }=>{
-                let lox_fn = LoxFunction::new(stmt.clone());
-                let callable:Rc<dyn LoxCallable> = Rc::new(lox_fn); 
-                self.environemt.as_ref().borrow_mut().define(name.lexeme.clone().unwrap(), Literal::Function(callable));
+            Stmt::Function_Decl {
+                ref name,
+                params: _,
+                body: _,
+            } => {
+                let lox_fn = LoxFunction::new(stmt.clone(),self.environemt.clone());
+                let callable: Rc<dyn LoxCallable> = Rc::new(lox_fn);
+                self.environemt
+                    .as_ref()
+                    .borrow_mut()
+                    .define(name.lexeme.clone().unwrap(), Literal::Function(callable));
                 Ok(())
-            },
+            }
             Stmt::While {
                 ref condition,
                 ref stmts,
-                finally
+                finally,
             } => {
                 'not_lb: while self.eval(condition.clone()).unwrap().is_truthly() {
                     match self.execute(*stmts.clone()) {
                         Err(Error::Continue) => {
                             // what if i just increment before the continue .?? it will fix the
                             // infinte loop ig
-                            finally.as_ref().map(|a| {
-                               self.eval(a.clone()).unwrap()
-                              });
+                            finally.as_ref().map(|a| self.eval(a.clone()).unwrap());
                             continue 'not_lb;
                         }
                         Err(Error::Break) => break 'not_lb,
                         Err(Error::Other(a)) => return Err(Error::Other(a)),
-                        Err(Error::Return(a)) => return  Err(Error::Return(a)),
+                        Err(Error::Return(a)) => return Err(Error::Return(a)),
                         Ok(_) => {}
                     }
-                    finally.as_ref().map(|a| {
-                      self.eval(a.clone()).unwrap()
-                    });
+                    finally.as_ref().map(|a| self.eval(a.clone()).unwrap());
                 }
                 Ok(())
             }
@@ -182,8 +213,8 @@ impl Interpreter {
             }
             Stmt::Block { stmts } => {
                 let env = Rc::new(RefCell::new(Environment::new()));
-                self.execute_block(stmts,env)
-            },
+                self.execute_block(stmts, env)
+            }
             Stmt::Variable { op, expr } => {
                 if let Some(a) = expr {
                     let eval = self.eval(a).unwrap();
@@ -211,24 +242,37 @@ impl Interpreter {
             }
         }
     }
+
+    pub fn look_up_variable(&mut self, name: &String, id:usize) -> Result<Literal, String> {
+        let distance = self.locals.get(&id);
+        if let Some(_) = distance {
+            Environment::get_At(self.environemt.clone(), *distance.unwrap(), name.clone())
+        } else {
+            self.environemt.as_ref().borrow_mut().get(name.to_string())
+        }
+    }
     pub fn eval(&mut self, expr: Expr) -> Result<Literal, String> {
         match expr {
-            Expr::Call { callie, paren, args }=>{
+            Expr::Call {
+                callie,
+                paren,
+                args,
+            } => {
                 let callie = self.eval(*callie)?;
                 let mut arg = vec![];
-                for i in args{
+                for i in args {
                     arg.push(self.eval(i.clone())?);
                 }
 
-                if let Literal::Function(a) = callie{
-                    if a.arity() != arg.len(){
-                      return Err("arguments mismached".to_string())
+                if let Literal::Function(a) = callie {
+                    if a.arity() != arg.len() {
+                        return Err("arguments mismached".to_owned());
                     }
-                    Ok(a.call(self,arg))
-                }else {
-                    Err("given type is not callable".to_string())
+                    Ok(a.call(self, arg))
+                } else {
+                    Err("given type is not callable".to_owned())
                 }
-            },
+            }
             Expr::Logical { left, op, right } => {
                 let left = self.eval(*left)?;
                 if op.token_type == TokenType::Or {
@@ -240,19 +284,28 @@ impl Interpreter {
                 }
                 Ok(self.eval(*right)?)
             }
-            Expr::Assign { token, value } => {
-                let expr = self.eval(*value)?;
-                self.environemt
-                    .as_ref()
-                    .borrow_mut()
-                    .assign(&token.lexeme.unwrap(), &expr)?;
+            Expr::Assign { token, ref value,ref id } => {
+                let expr = self.eval(*value.clone())?.clone();
+                let distance = self.locals.get(id);
+                if let Some(a) = distance {
+                    Environment::ASSIGN_AT(
+                        self.environemt.clone(),
+                        *a,
+                        &token.lexeme.unwrap(),
+                        expr.clone(),
+                    );
+                } else {
+                    self.environemt
+                        .as_ref()
+                        .borrow_mut()
+                        .assign(&token.lexeme.unwrap(), &expr)?;
+                }
                 Ok(expr)
             }
-            Expr::Variable { token } => self
-                .environemt
-                .as_ref()
-                .borrow_mut()
-                .get(token.lexeme.unwrap()),
+            Expr::Variable { ref token, id } => {
+                let ref name = token.lexeme.clone().unwrap();
+                self.look_up_variable(name, id)
+            }
             Expr::Literal { value } => Ok(value.clone()),
             Expr::Group { value } => Ok(self.eval(*value)?),
             Expr::Unary { op, expr } => {
@@ -261,7 +314,7 @@ impl Interpreter {
                 match (token_type, expr) {
                     (TokenType::Bang, Ok(any)) => Ok(Literal::from(!any.is_truthly())),
                     (TokenType::Minus, Ok(Literal::Number(a))) => Ok(Literal::Number(-a)),
-                    _ => Err("not implemented for this type".to_string()),
+                    _ => Err("not implemented for this type".to_owned()),
                 }
             }
             Expr::Binary { left, op, right } => {
@@ -282,12 +335,12 @@ impl Interpreter {
                         Ok(Literal::Number(a * b))
                     }
                     (Literal::String(a), TokenType::Plus, Literal::String(b)) => {
-                        a.borrow_mut().push_str(b.borrow().as_str());
-                        Ok(Literal::String(a))
+                        let str = format!("{}{}", a, b);
+                        Ok(Literal::String(str))
                     }
                     (Literal::String(a), TokenType::Plus, Literal::Number(b)) => {
-                        a.borrow_mut().push_str(b.to_string().as_str());
-                        Ok(Literal::String(a))
+                        let str = format!("{}{}", a, b);
+                        Ok(Literal::String(str))
                     }
                     (Literal::Number(a), TokenType::Greater, Literal::Number(b)) => {
                         Ok(Literal::from(a > b))
@@ -311,5 +364,3 @@ impl Interpreter {
         }
     }
 }
-
-

@@ -24,6 +24,7 @@ pub struct Parser {
     tokens: Vec<Token>,
     current: usize,
     loop_depth: usize,
+    id:usize
 }
 
 impl Parser {
@@ -32,6 +33,7 @@ impl Parser {
             tokens,
             current: 0,
             loop_depth: 0,
+            id:0
         }
     }
 
@@ -67,9 +69,9 @@ impl Parser {
     pub fn statements(&mut self) -> Result<Stmt, String> {
         if self.match_(&[TokenType::Print]) {
             self.print_statement()
-        }else if  self.match_(&[TokenType::Return]){
+        } else if self.match_(&[TokenType::Return]) {
             self.return_statement()
-        }else if self.match_(&[TokenType::Fun]) {
+        } else if self.match_(&[TokenType::Fun]) {
             self.func_statement("function")
         } else if self.match_(&[TokenType::For]) {
             self.for_statement()
@@ -100,27 +102,40 @@ impl Parser {
         }
     }
 
-    pub fn return_statement(&mut self)->Result<Stmt,String>{
+    pub fn return_statement(&mut self) -> Result<Stmt, String> {
         let token = self.previous().clone();
-        let mut expr = Expr::Literal { value: Literal::Nil };
-        if !self.check(TokenType::Semicolon){
+        let mut expr = Expr::Literal {
+            value: Literal::Nil,
+        };
+        if !self.check(TokenType::Semicolon) {
             expr = self.expression()?;
         }
         self.consume(TokenType::Semicolon, "Expected ; after an expression")?;
-        Ok(Stmt::Return { token:token, value: expr })
+        Ok(Stmt::Return {
+            token: token,
+            value: expr,
+        })
     }
 
-    pub fn func_statement(&mut self,name:&str)->Result<Stmt,String>{
-        let fn_name = self.consume(TokenType::Identifier, &format!("Expected kind {} name",name))?; 
-        let left_paren = self.consume(TokenType::LeftParen, &format!("Expected ( after {} name ",name))?;
+    pub fn func_statement(&mut self, name: &str) -> Result<Stmt, String> {
+        let fn_name = self.consume(
+            TokenType::Identifier,
+            &format!("Expected kind {} name", name),
+        )?;
+        let left_paren = self.consume(
+            TokenType::LeftParen,
+            &format!("Expected ( after {} name ", name),
+        )?;
         let mut params = vec![];
         loop {
             if params.len() >= 255 {
-                  return Err("cant have more than 255 args".to_string());
+                return Err("cant have more than 255 args".to_string());
             }
-            if self.check(TokenType::RightParen){break;}
+            if self.check(TokenType::RightParen) {
+                break;
+            }
             params.push(self.consume(TokenType::Identifier, "Expected parameter name")?);
-            if !self.match_(&[TokenType::Comma]){
+            if !self.match_(&[TokenType::Comma]) {
                 break;
             }
         }
@@ -128,10 +143,15 @@ impl Parser {
         let right_paren = self.consume(TokenType::RightParen, "Expected ) after parameters")?;
         self.consume(TokenType::LeftBrace, "Expected { before a block")?;
         let val = self.block()?;
-        let Stmt::Block { stmts } = val else{unreachable!()};
-        Ok(Stmt::Function_Decl { name: fn_name, params, body: stmts })   
-     }
-
+        let Stmt::Block { stmts } = val else {
+            unreachable!()
+        };
+        Ok(Stmt::Function_Decl {
+            name: fn_name,
+            params,
+            body: stmts,
+        })
+    }
 
     pub fn for_statement(&mut self) -> Result<Stmt, String> {
         self.consume(TokenType::LeftParen, "Expected ( after for")?;
@@ -167,7 +187,7 @@ impl Parser {
         body = Stmt::While {
             condition: condition.unwrap(),
             stmts: Box::new(body),
-            finally:expr
+            finally: expr,
         };
 
         if init.is_some() {
@@ -190,7 +210,7 @@ impl Parser {
             Ok(Stmt::While {
                 condition: expr,
                 stmts: Box::new(statements),
-                finally:None
+                finally: None,
             })
         }
     }
@@ -247,11 +267,15 @@ impl Parser {
         let expr = self.or()?;
         if self.match_(&[TokenType::Equal]) {
             let value = self.assignment()?;
-            if let Expr::Variable { ref token } = expr {
+            if let Expr::Variable { ref token,id } = expr {
+                
+                self.id += 1;
                 Ok(Expr::Assign {
                     token: token.clone(),
                     value: Box::new(value),
+                    id:dbg!(self.id)
                 })
+                
             } else {
                 Err("Invalid assignment target".to_string())
             }
@@ -360,33 +384,36 @@ impl Parser {
         self.call()
     }
 
-    pub fn call(&mut self)->Result<Expr,String>{
-        let mut  expr = self.primary()?;
-        while true{
-
-            if self.match_(&[TokenType::LeftParen]){
+    pub fn call(&mut self) -> Result<Expr, String> {
+        let mut expr = self.primary()?;
+        while true {
+            if self.match_(&[TokenType::LeftParen]) {
                 expr = self.finish_call(expr)?;
-            }else {
+            } else {
                 break;
             }
         }
         Ok(expr)
     }
-    pub fn finish_call(&mut self,expr:Expr)->Result<Expr,String>{
+    pub fn finish_call(&mut self, expr: Expr) -> Result<Expr, String> {
         let mut args = vec![];
-        if ! self.check(TokenType::RightParen){
-             if args.len() >= 255{
+        if !self.check(TokenType::RightParen) {
+            if args.len() >= 255 {
                 return Err("cant have more than 255 args".to_string());
-             }
+            }
             'lo: loop {
                 args.push(self.expression()?);
-                if !self.match_(&[TokenType::Comma]){
+                if !self.match_(&[TokenType::Comma]) {
                     break 'lo;
                 }
-           } 
+            }
         }
         let token = self.consume(TokenType::RightParen, "Expected ) after arguments.")?;
-        Ok(Expr::Call { callie: Box::new(expr), paren: token, args })
+        Ok(Expr::Call {
+            callie: Box::new(expr),
+            paren: token,
+            args,
+        })
     }
 
     pub fn consume(&mut self, token: TokenType, msg: &str) -> Result<Token, String> {
@@ -400,12 +427,15 @@ impl Parser {
     pub fn primary(&mut self) -> Result<Expr, String> {
         let token = self.advance();
         match token.token_type {
-            TokenType::Identifier => Ok(Expr::Variable { token }),
+            TokenType::Identifier =>{ 
+                self.id += 1;
+                Ok(Expr::Variable { token,id:self.id })
+            }
             TokenType::Number => Ok(Expr::Literal {
                 value: crate::expr::Literal::Number(token.lexeme.unwrap().parse::<f64>().unwrap()),
             }),
             TokenType::StringLiteral => Ok(Expr::Literal {
-                value: crate::expr::Literal::String(Rc::new(RefCell::new(token.lexeme.unwrap()))),
+                value: crate::expr::Literal::String(token.lexeme.unwrap()),
             }),
             TokenType::Nil => Ok(Expr::Literal {
                 value: crate::expr::Literal::Nil,
