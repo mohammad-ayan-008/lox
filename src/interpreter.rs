@@ -1,17 +1,14 @@
 use std::{
     cell::RefCell,
     collections::HashMap,
-    env,
     fmt::Debug,
-    io::{Seek, Write, stdin, stdout},
-    net::ToSocketAddrs,
-    ops::Deref,
+    io::{Write, stdin, stdout},
     rc::Rc,
     time::{SystemTime, UNIX_EPOCH},
 };
 
 use crate::{
-    environment::{self, Environment}, expr::{Expr, Literal}, stmt::{self, Stmt}, Tokentype::TokenType
+    environment::Environment, expr::{Expr, Literal}, stmt::Stmt, Tokentype::TokenType
 };
 
 struct LoxFunction {
@@ -26,7 +23,7 @@ impl LoxFunction {
 }
 impl LoxCallable for LoxFunction {
     fn arity(&self) -> usize {
-        let Stmt::Function_Decl { name, params, body } = &self.decl else {
+        let Stmt::Function_Decl { name:_, params, body:_ } = &self.decl else {
             unreachable!()
         };
         params.len()
@@ -35,8 +32,8 @@ impl LoxCallable for LoxFunction {
     fn call(&self, interpreter: &mut Interpreter, args: Vec<Literal>) -> Literal {
 
         let environment = Environment::enclose(Rc::clone(&self.closure));
-        
-        let Stmt::Function_Decl { name, params, body } = &self.decl else {
+
+        let Stmt::Function_Decl { name:_, params, body } = &self.decl else {
             unreachable!()
         };
         for (index, i) in params.iter().enumerate() {
@@ -56,20 +53,20 @@ pub trait LoxCallable {
     fn arity(&self) -> usize;
     fn call(&self, interpreter: &mut Interpreter, args: Vec<Literal>) -> Literal;
 }
-type ExprID = usize;
+
 pub struct Interpreter {
     environemt: Rc<RefCell<Environment>>,
     global: Rc<RefCell<Environment>>,
-    locals: HashMap<ExprID, usize>,
+    pub locals: HashMap<usize, usize>,
 }
 // global functions
-struct clock;
-impl LoxCallable for clock {
+struct Clock;
+impl LoxCallable for Clock {
     fn arity(&self) -> usize {
         0
     }
 
-    fn call(&self, interpreter: &mut Interpreter, args: Vec<Literal>) -> Literal {
+    fn call(&self, _interpreter: &mut Interpreter, _args: Vec<Literal>) -> Literal {
         let time = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
@@ -77,13 +74,13 @@ impl LoxCallable for clock {
         Literal::Number(time as f64)
     }
 }
-struct input;
-impl LoxCallable for input {
+struct Input;
+impl LoxCallable for Input {
     fn arity(&self) -> usize {
         1
     }
 
-    fn call(&self, interpreter: &mut Interpreter, args: Vec<Literal>) -> Literal {
+    fn call(&self, _interpreter: &mut Interpreter, args: Vec<Literal>) -> Literal {
         if let Literal::String(a) = args.get(0).unwrap() {
             print!("{}", a);
             stdout().flush().unwrap();
@@ -117,8 +114,8 @@ impl Default for Interpreter {
 impl Interpreter {
     pub fn new() -> Self {
         let i = Interpreter::default();
-        let func_clock: Rc<dyn LoxCallable> = Rc::new(clock);
-        let func_inp: Rc<dyn LoxCallable> = Rc::new(input);
+        let func_clock: Rc<dyn LoxCallable> = Rc::new(Clock);
+        let func_inp: Rc<dyn LoxCallable> = Rc::new(Input);
         i.global
             .as_ref()
             .borrow_mut()
@@ -143,7 +140,6 @@ impl Interpreter {
         stmt: Vec<Stmt>,
         env: Rc<RefCell<Environment>>,
     ) -> Result<(), Error> {
-        env.as_ref().borrow_mut().enclosing = Some(self.environemt.clone());
 
         let previous = self.environemt.clone();
         self.environemt = env;
@@ -168,7 +164,8 @@ impl Interpreter {
                 params: _,
                 body: _,
             } => {
-                let lox_fn = LoxFunction::new(stmt.clone(),self.environemt.clone());
+                let closure_snapshot = Rc::clone(&self.environemt);
+                let lox_fn = LoxFunction::new(stmt.clone(),closure_snapshot);
                 let callable: Rc<dyn LoxCallable> = Rc::new(lox_fn);
                 self.environemt
                     .as_ref()
@@ -212,8 +209,8 @@ impl Interpreter {
                 Ok(())
             }
             Stmt::Block { stmts } => {
-                let env = Rc::new(RefCell::new(Environment::new()));
-                self.execute_block(stmts, env)
+                let child = Environment::enclose(Rc::clone(&self.environemt));
+                self.execute_block(stmts, child)
             }
             Stmt::Variable { op, expr } => {
                 if let Some(a) = expr {
@@ -245,8 +242,9 @@ impl Interpreter {
 
     pub fn look_up_variable(&mut self, name: &String, id:usize) -> Result<Literal, String> {
         let distance = self.locals.get(&id);
-        if let Some(_) = distance {
-            Environment::get_At(self.environemt.clone(), *distance.unwrap(), name.clone())
+
+        if let Some(a) = distance {
+            Environment::get_At(self.environemt.clone(), *a, name.clone())
         } else {
             self.environemt.as_ref().borrow_mut().get(name.to_string())
         }

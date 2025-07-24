@@ -1,5 +1,3 @@
-use std::{borrow::Borrow, cell::RefCell, error::Error, io::stdin, rc::Rc};
-
 use crate::{
     Tokentype::{Token, TokenType},
     expr::{Expr, Literal},
@@ -88,7 +86,9 @@ impl Parser {
                     self.previous().line
                 ));
             }
-            Ok(Stmt::Break)
+            let res = Ok(Stmt::Break);
+            self.consume(TokenType::Semicolon, "Expected ; after break")?;
+            res
         } else if self.match_(&[TokenType::Continue]) {
             if self.loop_depth == 0 {
                 return Err(format!(
@@ -96,7 +96,9 @@ impl Parser {
                     self.previous().line
                 ));
             }
-            Ok(Stmt::Continue)
+            let res = Ok(Stmt::Continue);
+            self.consume(TokenType::Semicolon, "Expected ; after break")?;
+            res
         } else {
             self.expression_statement()
         }
@@ -273,7 +275,7 @@ impl Parser {
                 Ok(Expr::Assign {
                     token: token.clone(),
                     value: Box::new(value),
-                    id:dbg!(self.id)
+                    id:self.id
                 })
                 
             } else {
@@ -386,7 +388,7 @@ impl Parser {
 
     pub fn call(&mut self) -> Result<Expr, String> {
         let mut expr = self.primary()?;
-        while true {
+        loop {
             if self.match_(&[TokenType::LeftParen]) {
                 expr = self.finish_call(expr)?;
             } else {
@@ -429,7 +431,8 @@ impl Parser {
         match token.token_type {
             TokenType::Identifier =>{ 
                 self.id += 1;
-                Ok(Expr::Variable { token,id:self.id })
+                let name = token.lexeme.as_ref().unwrap().clone(); 
+                Ok(Expr::Variable { token,id: self.id})
             }
             TokenType::Number => Ok(Expr::Literal {
                 value: crate::expr::Literal::Number(token.lexeme.unwrap().parse::<f64>().unwrap()),

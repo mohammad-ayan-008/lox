@@ -1,0 +1,130 @@
+// 1. Block Scope Shadowing
+var a = "global";
+{
+  var a = "block";
+  print(a); // expect: block
+}
+print(a); // expect: global
+
+// 2. Function Closure Scope Resolution
+var a = "one";
+
+fun outer() {
+  var a = "two";
+
+  fun inner() {
+    print(a); // expect: two
+  }
+
+  inner();
+}
+
+outer();
+
+// 3. Closure Capturing Outer Scope (No Inner Shadowing)
+{
+  var a = "outside";
+
+  fun show() {
+    print("in/out " + a);
+  }
+
+  {
+    var a = "inside";
+    show(); // expect: in/out outside
+  }
+}
+
+// 4. Nested Shadowing and Visibility
+var a = "top";
+
+{
+  var a = "block";
+  print(a); // expect: block
+}
+print(a); // expect: top
+
+// 5. Function Can Mutate Outer Scope
+var a = "before";
+
+fun update() {
+  a = "after";
+}
+
+update();
+print(a); // expect: after
+
+// 6. Counter Closure (No Arrays)
+fun makeCounter() {
+  var count = 0;
+
+  fun inc1() {
+    count = count + 1;
+    print("first: " + count); // expect: first: 1
+  }
+
+  fun inc2() {
+    count = count + 1;
+    print("second: " + count); // expect: second: 2
+  }
+
+  inc1();
+  inc2();
+}
+
+makeCounter();
+
+// 7. Scopes Inside Loops With continue/break
+var a = 0;
+while (true) {
+  a = a + 1;
+  if (a == 2) {
+    continue;
+  }
+  print(a);
+  if (a > 2) {
+    break;
+  }
+}
+// expect: 1
+// expect: 3
+
+// 8. Function Parameters Shadow Outer Variables
+var a = "global";
+
+fun test(a) {
+  print(a); // expect: param
+}
+
+test("param");
+print(a);   // expect: global
+
+// 9. Return Closure From Function, Call Later
+fun maker() {
+  var word = "Hello";
+  fun say() {
+    print(word); // expect: Hello
+  }
+  return say;
+}
+
+var greet = maker();
+greet();
+
+// 10. Nested Closures Sharing Variable
+fun outer() {
+  var name = "Lox";
+
+  fun middle() {
+    fun inner() {
+      print("Welcome, " + name); // expect: Welcome, Lox
+    }
+
+    inner();
+  }
+
+  middle();
+}
+
+outer();
+

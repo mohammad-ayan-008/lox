@@ -13,16 +13,12 @@ operator       → "==" | "!=" | "<" | "<=" | ">" | ">="
 */
 
 use std::{
-    cell::RefCell,
-    env::set_var,
-    fmt::{Debug, Display, write},
-    hash::Hash,
-    ops::Not,
+    fmt::{Debug, Display},
     rc::Rc,
 };
 
 use crate::{
-    Tokentype::{Token, TokenType},
+    Tokentype::Token,
     interpreter::LoxCallable,
 };
 
@@ -38,7 +34,7 @@ pub enum Literal {
 impl Debug for Literal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Literal::Function(a) => write!(f, "func"),
+            Literal::Function(_) => write!(f, "func"),
             Literal::Nil => write!(f, "nil"),
             Literal::True => write!(f, "true"),
             Literal::False => write!(f, "false"),
@@ -51,7 +47,7 @@ impl Debug for Literal {
 impl Display for Literal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Literal::Function(a) => write!(f, "func"),
+            Literal::Function(_) => write!(f, "func"),
             Literal::Nil => write!(f, "nil"),
             Literal::True => write!(f, "true"),
             Literal::False => write!(f, "false"),

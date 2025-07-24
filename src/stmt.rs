@@ -29,6 +29,7 @@ pub enum Stmt {
         stmts: Box<Stmt>,
         finally: Option<Expr>,
     },
+    #[allow(non_camel_case_types)]
     Function_Decl {
         name: Token,
         params: Vec<Token>,

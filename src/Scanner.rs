@@ -1,7 +1,4 @@
-use std::{
-    collections::HashMap,
-    env::{current_dir, set_var},
-};
+use std::collections::HashMap;
 
 use crate::Tokentype::{self, Token, TokenType};
 

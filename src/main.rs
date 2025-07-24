@@ -1,3 +1,4 @@
+#![allow(warnings)]
 use std::{
     env,
     io::{Write, stdin, stdout},

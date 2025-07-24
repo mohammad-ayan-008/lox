@@ -1,4 +1,4 @@
-use std::collections::{HashMap, VecDeque};
+use std::collections::HashMap;
 
 use crate::{Tokentype::Token, expr::Expr, interpreter::Interpreter, stmt::Stmt};
 
@@ -8,14 +8,12 @@ use crate::{Tokentype::Token, expr::Expr, interpreter::Interpreter, stmt::Stmt};
 pub struct Resolver<'a> {
     interpreter: &'a mut Interpreter,
     scopes: Vec<HashMap<String, bool>>,
-    new_expr_id:usize
 }
 impl<'a> Resolver<'a> {
     pub fn new(interpreter: &'a mut Interpreter) -> Self {
         Self {
             interpreter,
-            scopes: vec![],
-            new_expr_id:0
+            scopes: vec![HashMap::new()],
         }
     }
 
@@ -107,12 +105,6 @@ impl<'a> Resolver<'a> {
         self.resolve(body);
         self.end_scope();
     }
-    fn assign_id(&mut self) -> usize {
-      let id = self.new_expr_id;
-      self.new_expr_id += 1;
-      id
-    }
-
     pub fn define(&mut self, name: &String) {
         if self.scopes.is_empty() {
             return;
@@ -163,12 +155,12 @@ impl<'a> Resolver<'a> {
         }
     }
 
-   pub fn resolve_local(&mut self, token: Token,id:usize) {
+
+ pub fn resolve_local(&mut self, token: Token, id: usize) {
     if let Some(name) = &token.lexeme {
-        for i in (0..=self.scopes.len()-1).rev() {
-            if self.scopes[i].contains_key(name) {
-                self.interpreter
-                    .resolve(id, self.scopes.len() -1 - i);
+        for (depth, scope) in self.scopes.iter().rev().enumerate() {
+            if scope.contains_key(name) {
+                self.interpreter.resolve(id, depth);
                 return;
             }
         }
