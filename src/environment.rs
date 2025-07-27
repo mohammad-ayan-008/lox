@@ -62,7 +62,7 @@ impl Environment {
     pub fn ancestor(env: Rc<RefCell<Self>>, distance: usize) -> Rc<RefCell<Environment>> {
         let mut env = env.clone();
         for _ in 0..distance {
-            if let Some(a) = env.clone().borrow().enclosing.as_ref(){
+            if let Some(a) = env.clone().borrow_mut().enclosing.as_ref(){
               env = a.clone();
             }
         }

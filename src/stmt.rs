@@ -2,6 +2,11 @@ use crate::{Tokentype::Token, expr::Expr};
 
 #[derive(Debug, Clone)]
 pub enum Stmt {
+    Class{
+        name:Token,
+        functions:Vec<Stmt>,
+        instance_variables:Vec<Stmt> 
+    },
     Expr {
         expr: Expr,
     },

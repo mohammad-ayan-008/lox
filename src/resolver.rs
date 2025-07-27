@@ -1,3 +1,4 @@
+
 use std::collections::HashMap;
 
 use crate::{Tokentype::Token, expr::Expr, interpreter::Interpreter, stmt::Stmt};
@@ -37,6 +38,16 @@ impl<'a> Resolver<'a> {
 
     fn resolve_stmt(&mut self, stmt: Stmt) {
         match stmt {
+            Stmt::Class {name, functions, instance_variables }=>{
+                self.declare(name.lexeme.as_ref().unwrap());
+                self.define(name.lexeme.as_ref().unwrap());
+                self.begin_scope();
+                self.scopes.last_mut().unwrap().insert("this".to_owned(), true);
+                for i in functions.iter(){
+                    self.resolve_function(i);
+                }
+                self.end_scope();
+            },
             Stmt::Block { stmts } => {
                 self.begin_scope();
                 self.resolve(stmts);
@@ -58,7 +69,7 @@ impl<'a> Resolver<'a> {
                 let ref name = name.lexeme.clone().unwrap();
                 self.declare(name);
                 self.define(name);
-                self.resolve_function(stmt)
+                self.resolve_function(&stmt)
             }
             Stmt::Expr { expr } => {
                 self.resolve_expr(expr);
@@ -92,7 +103,7 @@ impl<'a> Resolver<'a> {
         }
     }
 
-    pub fn resolve_function(&mut self, stmt: Stmt) {
+    pub fn resolve_function(&mut self, stmt: &Stmt) {
         self.begin_scope();
         let Stmt::Function_Decl { name, params, body } = stmt else {
             unreachable!()
@@ -102,7 +113,7 @@ impl<'a> Resolver<'a> {
             self.declare(name);
             self.define(name);
         }
-        self.resolve(body);
+        self.resolve(body.to_vec());
         self.end_scope();
     }
     pub fn define(&mut self, name: &String) {
@@ -114,6 +125,13 @@ impl<'a> Resolver<'a> {
 
     pub fn resolve_expr(&mut self, expr: Expr) {
         match expr {
+            Expr::This { keyword,id }=>{
+                self.resolve_local(keyword, id);
+            },
+            Expr::Set { expr, token, value }=>{
+                self.resolve_expr(*expr);
+                self.resolve_expr(*value);
+            },
             Expr::Variable { ref token , ref id} => {
                 if !self.scopes.is_empty() && self.scopes.last().unwrap().get(token.lexeme.as_ref().unwrap()) ==Some(&false){
                     eprintln!("Can't read local variable in its own initializer.");
@@ -150,6 +168,9 @@ impl<'a> Resolver<'a> {
             Expr::Logical { left, op, right } => {
                 self.resolve_expr(*left);
                 self.resolve_expr(*right);
+            },
+            Expr::Get { expr, token }=>{
+                self.resolve_expr(*expr);
             }
             _ => (),
         }
@@ -174,6 +195,9 @@ impl<'a> Resolver<'a> {
             return;
         }
         if let Some(scope) = self.scopes.last_mut() {
+            if scope.contains_key(&name.clone()){
+                panic!("{} already defined the variable in this scope ",name.clone());
+            }
             scope.insert(name.clone(), false);
         }
     }

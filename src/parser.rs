@@ -63,10 +63,30 @@ impl Parser {
             expr: init,
         })
     }
-
+    pub fn class_decl(&mut self)->Result<Stmt,String>{
+        let name = self.consume(TokenType::Identifier, "Expected class name")?;
+        self.consume(TokenType::LeftBrace, "Expected { before class body")?;
+        let mut instance_variables =vec![];
+        let mut functions= vec![];
+        while !self.check(TokenType::RightBrace) && !self.is_end() {
+            if self.match_(&[TokenType::Var]){
+              instance_variables.push(self.variable()?);
+            }
+             if self.match_(&[TokenType::Fun]){
+              functions.push(self.func_statement("func")?);
+            }
+            
+        }
+        
+        self.consume(TokenType::RightBrace, "Expected } after class body")?;
+       Ok(Stmt::Class {  name, functions , instance_variables }) 
+    }
     pub fn statements(&mut self) -> Result<Stmt, String> {
         if self.match_(&[TokenType::Print]) {
             self.print_statement()
+        } 
+        else if self.match_(&[TokenType::Class]) {
+           self.class_decl() 
         } else if self.match_(&[TokenType::Return]) {
             self.return_statement()
         } else if self.match_(&[TokenType::Fun]) {
@@ -272,16 +292,20 @@ impl Parser {
             if let Expr::Variable { ref token,id } = expr {
                 
                 self.id += 1;
-                Ok(Expr::Assign {
+                return Ok(Expr::Assign {
                     token: token.clone(),
                     value: Box::new(value),
                     id:self.id
-                })
+                });
                 
-            } else {
-                Err("Invalid assignment target".to_string())
+            } 
+
+            if let Expr::Get { expr, token }= expr{
+                return Ok(Expr::Set { expr, token , value:Box::new(value) });
             }
-        } else {
+            Err("Invalid assignment target".to_string())
+        
+        }else {
             Ok(expr)
         }
     }
@@ -391,7 +415,10 @@ impl Parser {
         loop {
             if self.match_(&[TokenType::LeftParen]) {
                 expr = self.finish_call(expr)?;
-            } else {
+            }if self.match_(&[TokenType::Dot]){
+                let token = self.consume(TokenType::Identifier, "Expected property name after .")?;
+                expr = Expr::Get { expr:Box::new(expr) , token  }
+            }else {
                 break;
             }
         }
@@ -433,7 +460,11 @@ impl Parser {
                 self.id += 1;
                 let name = token.lexeme.as_ref().unwrap().clone(); 
                 Ok(Expr::Variable { token,id: self.id})
-            }
+            },
+            TokenType::This =>{
+                self.id+=1;
+                Ok(Expr::This { keyword: self.previous().clone() ,id:self.id })
+            },
             TokenType::Number => Ok(Expr::Literal {
                 value: crate::expr::Literal::Number(token.lexeme.unwrap().parse::<f64>().unwrap()),
             }),

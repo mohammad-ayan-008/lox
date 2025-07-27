@@ -1,23 +1,22 @@
+var val = "hello";
 
-var a = "heyy";
 {
-   fun test(){
-	print(a);
-   }
-
-   var a = "lol";
+  fun test(){
+    print(val);
+}
+   var val = "lost";
    test();
 }
 
-
-var b = 1;
-fun test1(){
-  print(b);
-}
-
-{
- var b = 2;
- test1();
+class Employee{
+   var name;
+   var id;
+   fun test(){
+	this.name = 1;
+   }
 }
 
 
+var emp = Employee();
+emp.test();
+print(emp.name);

@@ -13,18 +13,19 @@ operator       → "==" | "!=" | "<" | "<=" | ">" | ">="
 */
 
 use std::{
-    fmt::{Debug, Display},
-    rc::Rc,
+    cell::RefCell, fmt::{write, Debug, Display}, rc::Rc
 };
 
 use crate::{
     Tokentype::Token,
     interpreter::LoxCallable,
+    interpreter::{LoxClass,LoxInstance},
 };
 
 #[derive(Clone)]
 pub enum Literal {
-    Function(Rc<dyn LoxCallable>),
+    Instance(LoxInstance),
+    Callable(Rc<dyn LoxCallable>),
     Number(f64),
     String(String),
     False,
@@ -34,7 +35,8 @@ pub enum Literal {
 impl Debug for Literal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Literal::Function(_) => write!(f, "func"),
+            Literal::Instance(_)=>write!(f,"klass"),
+            Literal::Callable(_) => write!(f, "func"),
             Literal::Nil => write!(f, "nil"),
             Literal::True => write!(f, "true"),
             Literal::False => write!(f, "false"),
@@ -47,7 +49,8 @@ impl Debug for Literal {
 impl Display for Literal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Literal::Function(_) => write!(f, "func"),
+            Literal::Instance(a)=> write!(f,"{}",a.class.name),
+            Literal::Callable(_) => write!(f, "func"),
             Literal::Nil => write!(f, "nil"),
             Literal::True => write!(f, "true"),
             Literal::False => write!(f, "false"),
@@ -68,7 +71,7 @@ impl Literal {
 impl PartialEq for Literal {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (Literal::Function(a), any) => panic!("cant compare a function to other type"),
+            (Literal::Callable(a), any) => panic!("cant compare a function to other type"),
             (Literal::Nil, Literal::Nil) => true,
             (Literal::True, Literal::True) => true,
             (Literal::False, Literal::False) => true,
@@ -122,4 +125,17 @@ pub enum Expr {
         paren: Token,
         args: Vec<Expr>,
     },
+    Get{
+        expr:Box<Expr>,
+        token:Token
+    },
+    Set{
+        expr:Box<Expr>,
+        token:Token,
+        value:Box<Expr>
+    },
+    This{
+        keyword:Token,
+        id:usize
+    }
 }

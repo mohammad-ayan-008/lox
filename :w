@@ -6,36 +6,24 @@ use crate::{
     environment::Environment, expr::{Expr, Literal}, stmt::Stmt, Tokentype::TokenType
 };
 
-#[derive(Clone)]
 pub struct LoxInstance{
     pub class:LoxClass,
     pub fields:HashMap<String,Literal>,
     pub functions:HashMap<String,LoxFunction>,
 }
 impl LoxInstance{
-    pub fn new(class:LoxClass,)->Self{
+    pub fn new(class:LoxClass)->Self{
         Self{
             class,
             fields:HashMap::new(),
-            functions:HashMap::new(),
+            functions:HashMap::new()
         }
     }
-    pub fn get(self,name:String)->Result<Literal,String>{
+    pub fn get(&self,name:String)->Result<Literal,String>{
         if self.fields.contains_key(&name){
             return Ok(self.fields.get(&name).unwrap().clone());
         }
-
-        if self.functions.contains_key(&name){
-            let lox_fn = self.functions.get(&name).unwrap().clone().bind(self);
-            if let Literal::Instance(a) = lox_fn.closure.as_ref().borrow_mut().get("this".to_owned()).unwrap(){
-            println!("{:?}",a.fields);
-            }
-
-            let callable:Rc<dyn LoxCallable> = Rc::new(lox_fn); 
-            let fun:Literal = Literal::Callable(callable); 
-            return Ok(fun);
-        }
-        Err("undefined property get".to_string())
+        Err("undefined property".to_string())
     }
 
     pub fn set(&mut self,name:String,value:Literal)->Result<Literal,String>{
@@ -49,10 +37,6 @@ impl LoxInstance{
     pub fn set_new(&mut self,name:String,value:Literal){
         self.fields.insert(name,value);
     }
-    pub fn set_new_fn(&mut self,name:String,value:LoxFunction){
-        self.functions.insert(name,value);
-    }
-    
 
 }
 
@@ -60,7 +44,7 @@ impl LoxInstance{
 pub struct LoxClass{
     pub name:String,
     pub fields:Vec<Stmt>,
-    pub methods:HashMap<String,LoxFunction>
+    pub methods:Vec<Stmt>
 }
  
 impl LoxCallable for LoxClass{
@@ -70,10 +54,6 @@ impl LoxCallable for LoxClass{
 
     fn call(&self, interpreter: &mut Interpreter, args: Vec<Literal>) -> Literal {
         let mut class = LoxInstance::new(self.clone());
-        for i in self.methods.iter(){
-
-            class.set_new_fn(i.0.clone(), i.1.clone());
-        }
         for i in self.fields.iter(){
             if let Stmt::Variable { op, expr }= i{
                  if let Some(a) = expr.as_ref(){
@@ -84,13 +64,13 @@ impl LoxCallable for LoxClass{
                 }
             }
         }
-        let instance = Literal::Instance(class);
+        let instance = Literal::Instance( Rc::new(RefCell::new( class)));
         instance
     }
 }
 
 
-#[derive(Clone,Debug)]
+#[derive(Clone)]
 struct LoxFunction {
     decl: Stmt, // will be f(x)
     closure: Rc<RefCell<Environment>>,
@@ -99,11 +79,6 @@ struct LoxFunction {
 impl LoxFunction {
     fn new(decl: Stmt,closure:Rc<RefCell<Environment>>) -> Self {
         Self { decl,closure }
-    }
-    fn bind(&mut self,instance:LoxInstance)->Self{
-        let env = Environment::enclose(self.closure.clone());
-        env.as_ref().borrow_mut().define("this".to_owned(), Literal::Instance(instance));
-        LoxFunction::new(self.decl.clone(), env)
     }
 }
 impl LoxCallable for LoxFunction {
@@ -167,6 +142,7 @@ impl LoxCallable for Input {
 
     fn call(&self, _interpreter: &mut Interpreter, args: Vec<Literal>) -> Literal {
         if let Literal::String(a) = args.get(0).unwrap() {
+            print!("{}", a);
             stdout().flush().unwrap();
             let mut data = String::new();
             stdin().read_line(&mut data).unwrap();
@@ -237,21 +213,12 @@ impl Interpreter {
 
     pub fn execute(&mut self, stmt: Stmt) -> Result<(), Error> {
         match stmt {
-            Stmt::Class { name, functions,instance_variables }=>{
+            Stmt::Class { name, functions, instance_variables }=>{
                 self.environemt.as_ref().borrow_mut().define(name.lexeme.as_ref().unwrap().clone(), Literal::Nil);
-                let mut met = HashMap::new();
-                for i in functions.iter(){
-                    if let Stmt::Function_Decl { name, params, body }= i{
-                     let closure_snapshot = Rc::clone(&self.environemt);
-                     let lox_fn = LoxFunction::new(i.clone(),closure_snapshot);
-                     met.insert(name.lexeme.as_ref().unwrap().clone(), lox_fn);
-                    }
-                }
-
                 let lox_class:Rc<dyn LoxCallable> = Rc::new(LoxClass{
                     name: name.lexeme.as_ref().unwrap().clone(),
                     fields:instance_variables,
-                    methods:met
+                    methods:functions
                 });
                 self.environemt.as_ref().borrow_mut().assign(&name.lexeme.as_ref().unwrap().clone(), &Literal::Callable(lox_class));
                 Ok(())
@@ -354,14 +321,11 @@ impl Interpreter {
     }
     pub fn eval(&mut self, expr: Expr) -> Result<Literal, String> {
         match expr {
-            Expr::This { keyword, id }=>{
-                self.look_up_variable(keyword.lexeme.as_ref().unwrap(), id)
-            },
             Expr::Set { expr, token, value }=>{
-                let mut  v = self.eval(*expr)?;
-                if let Literal::Instance(ref mut a) = v{
+                let v = self.eval(*expr)?;
+                if let Literal::Instance(a) = v{
                      let val = self.eval(*value)?;
-                    let values = a.set(token.lexeme.as_ref().unwrap().clone(), val)?;
+                    let values = a.as_ref().borrow_mut().set(token.lexeme.as_ref().unwrap().clone(), val)?;
                     return Ok(values);
                 }
                 Err("only instance have fields".to_string())
@@ -369,7 +333,8 @@ impl Interpreter {
             Expr::Get { expr, token }=>{
                 let ob = self.eval(*expr)?;
                 if let Literal::Instance(a) = ob{
-                    let val =a.get(token.lexeme.as_ref().unwrap().clone())?;
+                    let val =a.clone().borrow()
+                        .get(token.lexeme.as_ref().unwrap().clone())?;
                     return Ok(val);
                 }
                 Err(format!(" only instances have property"))

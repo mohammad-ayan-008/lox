@@ -121,7 +121,7 @@ impl Scanner {
         }
         let text = self.source[self.start..self.current].to_owned();
         if let Some(a) = self.keywords.get(&text) {
-            self.add_token(*a, None);
+            self.add_token(*a, Some(text));
         } else {
             self.add_token(TokenType::Identifier, Some(text));
         }
