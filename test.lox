@@ -1,22 +1,12 @@
-var val = "hello";
-
-{
-  fun test(){
-    print(val);
-}
-   var val = "lost";
-   test();
-}
-
 class Employee{
    var name;
    var id;
-   fun test(){
-	this.name = 1;
+   fun init(a){
+	this.name = a;
    }
 }
 
 
 var emp = Employee();
-emp.test();
+emp.init(1);
 print(emp.name);

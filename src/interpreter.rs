@@ -6,7 +6,8 @@ use crate::{
     environment::Environment, expr::{Expr, Literal}, stmt::Stmt, Tokentype::TokenType
 };
 
-#[derive(Clone)]
+
+#[derive(Clone,Debug)]
 pub struct LoxInstance{
     pub class:LoxClass,
     pub fields:HashMap<String,Literal>,
@@ -20,17 +21,13 @@ impl LoxInstance{
             functions:HashMap::new(),
         }
     }
-    pub fn get(self,name:String)->Result<Literal,String>{
-        if self.fields.contains_key(&name){
-            return Ok(self.fields.get(&name).unwrap().clone());
+    pub fn get(env:Rc<RefCell<Self>>,name:String)->Result<Literal,String>{
+        if env.as_ref().borrow().fields.contains_key(&name){
+            return Ok(env.as_ref().borrow().fields.get(&name).unwrap().clone());
         }
 
-        if self.functions.contains_key(&name){
-            let lox_fn = self.functions.get(&name).unwrap().clone().bind(self);
-            if let Literal::Instance(a) = lox_fn.closure.as_ref().borrow_mut().get("this".to_owned()).unwrap(){
-            println!("{:?}",a.fields);
-            }
-
+        if env.as_ref().borrow().functions.contains_key(&name){
+            let lox_fn = env.as_ref().borrow().functions.get(&name).unwrap().clone().bind(env.clone());
             let callable:Rc<dyn LoxCallable> = Rc::new(lox_fn); 
             let fun:Literal = Literal::Callable(callable); 
             return Ok(fun);
@@ -84,7 +81,7 @@ impl LoxCallable for LoxClass{
                 }
             }
         }
-        let instance = Literal::Instance(class);
+        let instance = Literal::Instance(Rc::new(RefCell::new( class)));
         instance
     }
 }
@@ -100,7 +97,7 @@ impl LoxFunction {
     fn new(decl: Stmt,closure:Rc<RefCell<Environment>>) -> Self {
         Self { decl,closure }
     }
-    fn bind(&mut self,instance:LoxInstance)->Self{
+    fn bind(&mut self,instance:Rc<RefCell<LoxInstance>>)->Self{
         let env = Environment::enclose(self.closure.clone());
         env.as_ref().borrow_mut().define("this".to_owned(), Literal::Instance(instance));
         LoxFunction::new(self.decl.clone(), env)
@@ -355,13 +352,14 @@ impl Interpreter {
     pub fn eval(&mut self, expr: Expr) -> Result<Literal, String> {
         match expr {
             Expr::This { keyword, id }=>{
-                self.look_up_variable(keyword.lexeme.as_ref().unwrap(), id)
+                let ins =self.look_up_variable(&"this".to_string(), id)?;  
+                Ok(ins)
             },
             Expr::Set { expr, token, value }=>{
                 let mut  v = self.eval(*expr)?;
-                if let Literal::Instance(ref mut a) = v{
+                if let Literal::Instance(a) = v{
                      let val = self.eval(*value)?;
-                    let values = a.set(token.lexeme.as_ref().unwrap().clone(), val)?;
+                    let values = a.as_ref().borrow_mut().set(token.lexeme.as_ref().unwrap().clone(), val)?;
                     return Ok(values);
                 }
                 Err("only instance have fields".to_string())
@@ -369,10 +367,11 @@ impl Interpreter {
             Expr::Get { expr, token }=>{
                 let ob = self.eval(*expr)?;
                 if let Literal::Instance(a) = ob{
-                    let val =a.get(token.lexeme.as_ref().unwrap().clone())?;
+                    let val = LoxInstance::get(a.clone(),token.lexeme.as_ref().unwrap().clone())?;
                     return Ok(val);
                 }
                 Err(format!(" only instances have property"))
+                
             },
             Expr::Call {
                 callie,

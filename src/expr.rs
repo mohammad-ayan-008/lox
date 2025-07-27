@@ -24,7 +24,7 @@ use crate::{
 
 #[derive(Clone)]
 pub enum Literal {
-    Instance(LoxInstance),
+    Instance(Rc<RefCell<LoxInstance>>),
     Callable(Rc<dyn LoxCallable>),
     Number(f64),
     String(String),
@@ -49,7 +49,7 @@ impl Debug for Literal {
 impl Display for Literal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Literal::Instance(a)=> write!(f,"{}",a.class.name),
+            Literal::Instance(a)=> write!(f,"{}",a.as_ref().borrow_mut().class.name),
             Literal::Callable(_) => write!(f, "func"),
             Literal::Nil => write!(f, "nil"),
             Literal::True => write!(f, "true"),
