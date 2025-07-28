@@ -1,12 +1,50 @@
-class Employee{
-   var name;
-   var id;
-   fun init(a){
-	this.name = a;
+
+class Rc{
+   var value;
+   Rc(val){
+      this.value = val;
    }
 }
 
+class Math{ 
+   fun add(a,b){
+	return a + a;
+   }
+   fun loopto(a){
+      var largest;
+      for (var i =0;i<a;i= i+1){
+        print(i);
+      }
+   }
+}
+class Employee{
+   var name;
+   var id;
 
-var emp = Employee();
-emp.init(1);
-print(emp.name);
+   Employee(name,id){
+	this.name = name;
+	this.id = id;
+   }
+
+   fun fmt(){
+	print("----fmt----");
+	print("name "+this.name);
+	print("id "+this.id);
+	print("-----------");
+   }
+}
+
+var emp = Employee("Ayan",1);
+var reff = Rc(emp);
+fun alter(a){
+   a.value.name = 1;
+}
+print("before alter");
+emp.fmt();
+alter(reff);
+print("after alter");
+emp.fmt();
+
+var math = Math();
+print(math.add(1,1));
+math.loopto(5);

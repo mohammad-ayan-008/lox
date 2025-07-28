@@ -68,18 +68,20 @@ impl Parser {
         self.consume(TokenType::LeftBrace, "Expected { before class body")?;
         let mut instance_variables =vec![];
         let mut functions= vec![];
+        let mut instance= None;
         while !self.check(TokenType::RightBrace) && !self.is_end() {
             if self.match_(&[TokenType::Var]){
               instance_variables.push(self.variable()?);
+            }else if self.match_(&[TokenType::Fun]){
+              functions.push(self.func_statement("func",false)?);
+            }else if instance.is_none(){
+                functions.push(self.func_statement("init",true)?);
+                instance = Some(())
             }
-             if self.match_(&[TokenType::Fun]){
-              functions.push(self.func_statement("func")?);
-            }
-            
         }
         
         self.consume(TokenType::RightBrace, "Expected } after class body")?;
-       Ok(Stmt::Class {  name, functions , instance_variables }) 
+       Ok(Stmt::Class {  name, functions , instance_variables}) 
     }
     pub fn statements(&mut self) -> Result<Stmt, String> {
         if self.match_(&[TokenType::Print]) {
@@ -90,7 +92,7 @@ impl Parser {
         } else if self.match_(&[TokenType::Return]) {
             self.return_statement()
         } else if self.match_(&[TokenType::Fun]) {
-            self.func_statement("function")
+            self.func_statement("function",false)
         } else if self.match_(&[TokenType::For]) {
             self.for_statement()
         } else if self.match_(&[TokenType::If]) {
@@ -139,7 +141,7 @@ impl Parser {
         })
     }
 
-    pub fn func_statement(&mut self, name: &str) -> Result<Stmt, String> {
+    pub fn func_statement(&mut self, name: &str,is_init:bool) -> Result<Stmt, String> {
         let fn_name = self.consume(
             TokenType::Identifier,
             &format!("Expected kind {} name", name),
@@ -168,6 +170,13 @@ impl Parser {
         let Stmt::Block { stmts } = val else {
             unreachable!()
         };
+        if is_init{
+         for i in &stmts{
+            if let Stmt::Return { token, value } = i{
+                    return Err("return not allowed inside constructor".to_owned());
+            }
+         }
+        }
         Ok(Stmt::Function_Decl {
             name: fn_name,
             params,

@@ -1,9 +1,3 @@
-var a = "global";
 
-{
-  var a = "block";
-  print (a); // Should print "block"
-}
 
-print (a); // Should print "global"
 

@@ -13,8 +13,9 @@ pub struct LoxInstance{
     pub fields:HashMap<String,Literal>,
     pub functions:HashMap<String,LoxFunction>,
 }
+
 impl LoxInstance{
-    pub fn new(class:LoxClass,)->Self{
+    pub fn new(class:LoxClass)->Self{
         Self{
             class,
             fields:HashMap::new(),
@@ -22,6 +23,7 @@ impl LoxInstance{
         }
     }
     pub fn get(env:Rc<RefCell<Self>>,name:String)->Result<Literal,String>{
+
         if env.as_ref().borrow().fields.contains_key(&name){
             return Ok(env.as_ref().borrow().fields.get(&name).unwrap().clone());
         }
@@ -57,18 +59,18 @@ impl LoxInstance{
 pub struct LoxClass{
     pub name:String,
     pub fields:Vec<Stmt>,
-    pub methods:HashMap<String,LoxFunction>
+    pub methods:HashMap<String,LoxFunction>,
+    pub params:Option<usize>,
 }
  
 impl LoxCallable for LoxClass{
     fn arity(&self) -> usize {
-        0
+        return self.params.unwrap_or(0);
     }
 
-    fn call(&self, interpreter: &mut Interpreter, args: Vec<Literal>) -> Literal {
+    fn call(&self, interpreter: &mut Interpreter, args: Vec<Literal>) -> Literal { 
         let mut class = LoxInstance::new(self.clone());
         for i in self.methods.iter(){
-
             class.set_new_fn(i.0.clone(), i.1.clone());
         }
         for i in self.fields.iter(){
@@ -81,7 +83,13 @@ impl LoxCallable for LoxClass{
                 }
             }
         }
-        let instance = Literal::Instance(Rc::new(RefCell::new( class)));
+        let cls = Rc::new(RefCell::new( class));
+        let name_cls= &cls.borrow().class.name.clone();
+        let mut fun = cls.clone().borrow().functions.get(name_cls).cloned();
+        if let Some(mut a) = fun{
+          a.bind(cls.clone()).call(interpreter, args);
+        }
+        let instance = Literal::Instance(cls.clone());
         instance
     }
 }
@@ -91,16 +99,17 @@ impl LoxCallable for LoxClass{
 struct LoxFunction {
     decl: Stmt, // will be f(x)
     closure: Rc<RefCell<Environment>>,
+    is_initializer:bool
 }
 
 impl LoxFunction {
-    fn new(decl: Stmt,closure:Rc<RefCell<Environment>>) -> Self {
-        Self { decl,closure }
+    fn new(decl: Stmt,closure:Rc<RefCell<Environment>>,init:bool) -> Self {
+        Self { decl,closure, is_initializer:init}
     }
     fn bind(&mut self,instance:Rc<RefCell<LoxInstance>>)->Self{
         let env = Environment::enclose(self.closure.clone());
         env.as_ref().borrow_mut().define("this".to_owned(), Literal::Instance(instance));
-        LoxFunction::new(self.decl.clone(), env)
+        LoxFunction::new(self.decl.clone(), env,self.is_initializer)
     }
 }
 impl LoxCallable for LoxFunction {
@@ -126,6 +135,9 @@ impl LoxCallable for LoxFunction {
         }
         if let Err(Error::Return(a)) = interpreter.execute_block(body.clone(), environment) {
             return a;
+        }
+        if self.is_initializer {
+            return Environment::get_At(self.closure.clone(),0, "this".to_owned()).unwrap_or(Literal::Nil);
         }
         Literal::Nil
     }
@@ -234,21 +246,31 @@ impl Interpreter {
 
     pub fn execute(&mut self, stmt: Stmt) -> Result<(), Error> {
         match stmt {
-            Stmt::Class { name, functions,instance_variables }=>{
+            Stmt::Class { name, functions,instance_variables}=>{
+                let class_name = name.lexeme.as_ref().unwrap();
+                let mut params_class=None;
                 self.environemt.as_ref().borrow_mut().define(name.lexeme.as_ref().unwrap().clone(), Literal::Nil);
                 let mut met = HashMap::new();
+                let closure_snapshot = Rc::clone(&self.environemt);
+                
                 for i in functions.iter(){
                     if let Stmt::Function_Decl { name, params, body }= i{
-                     let closure_snapshot = Rc::clone(&self.environemt);
-                     let lox_fn = LoxFunction::new(i.clone(),closure_snapshot);
-                     met.insert(name.lexeme.as_ref().unwrap().clone(), lox_fn);
+                     let method_name = name.lexeme.as_ref().unwrap();
+                     if method_name == class_name {
+                         params_class=Some(params.len());
+                         let lox_fn = LoxFunction::new(i.clone(),closure_snapshot.clone(),method_name == class_name);
+                         met.insert(class_name.clone(), lox_fn);
+                     } else{
+                        let lox_fn = LoxFunction::new(i.clone(),closure_snapshot.clone(),false);
+                        met.insert(name.lexeme.as_ref().unwrap().clone(), lox_fn);
                     }
                 }
-
+                }
                 let lox_class:Rc<dyn LoxCallable> = Rc::new(LoxClass{
                     name: name.lexeme.as_ref().unwrap().clone(),
                     fields:instance_variables,
-                    methods:met
+                    methods:met,
+                    params:params_class
                 });
                 self.environemt.as_ref().borrow_mut().assign(&name.lexeme.as_ref().unwrap().clone(), &Literal::Callable(lox_class));
                 Ok(())
@@ -265,7 +287,7 @@ impl Interpreter {
                 body: _,
             } => {
                 let closure_snapshot = Rc::clone(&self.environemt);
-                let lox_fn = LoxFunction::new(stmt.clone(),closure_snapshot);
+                let lox_fn = LoxFunction::new(stmt.clone(),closure_snapshot,true);
                 let callable: Rc<dyn LoxCallable> = Rc::new(lox_fn);
                 self.environemt
                     .as_ref()
